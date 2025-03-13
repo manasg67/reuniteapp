@@ -7,141 +7,220 @@ import Animated, {
   useAnimatedStyle, 
   withSpring, 
   withSequence, 
-  withDelay 
+  withDelay,
+  withTiming 
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function SubmissionSuccessScreen() {
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
+  const buttonScale = useSharedValue(1);
 
   useEffect(() => {
     scale.value = withSequence(
-      withSpring(1.2),
-      withSpring(1)
+      withSpring(0.8, { damping: 10 }),
+      withSpring(1, { damping: 15 })
     );
-    opacity.value = withDelay(
-      500,
-      withSpring(1)
+    opacity.value = withSequence(
+      withDelay(200, withTiming(1, { duration: 600 })),
     );
   }, []);
 
   const iconStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }]
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
   }));
 
   const contentStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{ translateY: withSpring(opacity.value * 0) }]
+    transform: [{ translateY: withSpring(opacity.value === 1 ? 0 : 20) }],
+  }));
+
+  const buttonStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: buttonScale.value }],
   }));
 
   const handleHomePress = () => {
-    router.push('/(tabs)/home');
+    buttonScale.value = withSequence(
+      withSpring(0.95),
+      withSpring(1)
+    );
+    setTimeout(() => router.push('/(tabs)/home'), 150);
   };
 
+  const caseNumber = Math.random().toString(36).slice(2, 8).toUpperCase();
+
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <Animated.View style={[styles.iconContainer, iconStyle]}>
-          <Ionicons name="checkmark-circle" size={100} color="#4CAF50" />
-        </Animated.View>
+    <LinearGradient
+      colors={['#E8F0FE', '#F5F7FA']}
+      style={styles.container}
+    >
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.content}>
+          <Animated.View style={[styles.iconContainer, iconStyle]}>
+            <View style={styles.iconBackground}>
+              <Ionicons name="checkmark-circle" size={100} color="#34C759" />
+            </View>
+          </Animated.View>
 
-        <Animated.View style={contentStyle}>
-          <Text style={styles.title}>Report Submitted</Text>
-          <Text style={styles.message}>
-            Thank you for submitting your report. Our team will review it and take appropriate action.
-          </Text>
-          <Text style={styles.caseNumber}>
-            Case Number: #{Math.random().toString().slice(2, 8)}
-          </Text>
-
-          <View style={styles.infoBox}>
-            <Text style={styles.infoTitle}>What happens next?</Text>
-            <Text style={styles.infoText}>
-              • Your report will be reviewed within 24 hours{'\n'}
-              • You'll receive updates via email/phone{'\n'}
-              • Local authorities will be notified if necessary
+          <Animated.View style={[styles.contentContainer, contentStyle]}>
+            <Text style={styles.title}>Submission Successful</Text>
+            <Text style={styles.message}>
+              Thank you for your report. Our team is on it and will keep you updated.
             </Text>
-          </View>
+            
+            <View style={styles.caseContainer}>
+              <Text style={styles.caseLabel}>Case ID</Text>
+              <Text style={styles.caseNumber}>#{caseNumber}</Text>
+            </View>
 
-          <TouchableOpacity style={styles.button} onPress={handleHomePress}>
-            <Text style={styles.buttonText}>Return to Home</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-    </SafeAreaView>
+            <View style={styles.infoCard}>
+              <Text style={styles.infoTitle}>Next Steps</Text>
+              <View style={styles.infoItem}>
+                <Ionicons name="time-outline" size={20} color="#666" />
+                <Text style={styles.infoText}>Review within 24-48 hours</Text>
+              </View>
+              <View style={styles.infoItem}>
+                <Ionicons name="mail-outline" size={20} color="#666" />
+                <Text style={styles.infoText}>Updates via email</Text>
+              </View>
+              <View style={styles.infoItem}>
+                <Ionicons name="shield-checkmark-outline" size={20} color="#666" />
+                <Text style={styles.infoText}>Authorities notified if needed</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              activeOpacity={0.9}
+              onPress={handleHomePress}
+            >
+              <Animated.View style={[styles.buttonContainer, buttonStyle]}>
+                <LinearGradient
+                  colors={['#4A90E2', '#357ABD']}
+                  style={styles.button}
+                >
+                  <Text style={styles.buttonText}>Back to Home</Text>
+                  <Ionicons name="arrow-forward" size={20} color="white" style={styles.buttonIcon} />
+                </LinearGradient>
+              </Animated.View>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f0f0',
+  },
+  safeArea: {
+    flex: 1,
   },
   content: {
     flex: 1,
     alignItems: 'center',
-    padding: 20,
-    paddingTop: 60,
+    padding: 24,
+    paddingTop: 40,
   },
   iconContainer: {
-    marginBottom: 30,
+    marginBottom: 32,
+  },
+  iconBackground: {
+    backgroundColor: 'rgba(52, 199, 89, 0.1)',
+    borderRadius: 80,
+    padding: 20,
+  },
+  contentContainer: {
+    width: '100%',
+    alignItems: 'center',
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: 32,
+    fontWeight: '700',
     color: '#1A237E',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   message: {
     fontSize: 16,
-    color: '#666',
+    color: '#555',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
     lineHeight: 24,
+    paddingHorizontal: 20,
+  },
+  caseContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    width: '100%',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E0E6ED',
+  },
+  caseLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
   },
   caseNumber: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#4a90e2',
-    textAlign: 'center',
-    marginBottom: 30,
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#4A90E2',
   },
-  infoBox: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+  infoCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: 20,
     width: '100%',
-    marginBottom: 30,
+    marginBottom: 32,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
   infoTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '600',
     color: '#1A237E',
-    marginBottom: 15,
+    marginBottom: 16,
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
   },
   infoText: {
     fontSize: 16,
-    color: '#666',
-    lineHeight: 24,
+    color: '#555',
+    marginLeft: 12,
+    flex: 1,
+  },
+  buttonContainer: {
+    width: '100%',
   },
   button: {
-    backgroundColor: '#4a90e2',
-    paddingHorizontal: 30,
-    paddingVertical: 15,
-    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 12,
     width: '100%',
   },
   buttonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    fontWeight: '600',
+    marginRight: 8,
   },
-}); 
+  buttonIcon: {
+    marginLeft: 4,
+  },
+});

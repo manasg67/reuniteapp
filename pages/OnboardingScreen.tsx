@@ -106,13 +106,13 @@ const OnboardingScreen = () => {
       flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true })
       setCurrentIndex(currentIndex + 1)
     } else {
-      router.push('/home')
+      router.push('/login')
     }
   }
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={["#E0F7FA", "#B2EBF2", "#80DEEA"]} style={styles.background} />
+      <LinearGradient colors={['#4c669f', '#3b5998', '#192f6a']} style={styles.background} />
       <FlatList
         ref={flatListRef}
         data={ONBOARDING_DATA}
@@ -169,13 +169,13 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "bold",
     marginBottom: 10,
-    color: "#1A237E",
+    color: "white",
   },
   description: {
     fontSize: 16,
     textAlign: "center",
     paddingHorizontal: 20,
-    color: "#303F9F",
+    color: "white",
   },
   dotsContainer: {
     flexDirection: "row",

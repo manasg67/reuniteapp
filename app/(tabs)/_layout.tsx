@@ -26,6 +26,9 @@ export default function TabLayout() {
             case 'home':
               iconName = focused ? "home" : "home-outline";
               break;
+            case 'profile':
+              iconName = focused ? "person" : "person-outline";
+              break;
             case 'search':
               iconName = focused ? "search" : "search-outline";
               break;
@@ -50,6 +53,13 @@ export default function TabLayout() {
         name="home" 
         options={{ 
           title: 'Home',
+          headerShown: false 
+        }} 
+      />
+      <Tabs.Screen 
+        name="profile" 
+        options={{ 
+          title: 'Profile',
           headerShown: false 
         }} 
       />

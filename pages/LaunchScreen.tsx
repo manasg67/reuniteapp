@@ -31,7 +31,7 @@ const LaunchScreen = () => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={["#E0F7FA", "#B2EBF2", "#80DEEA"]} style={styles.background} />
+      <LinearGradient colors={['#4c669f', '#3b5998', '#192f6a']} style={styles.background} />
       <Animated.View style={[styles.logoContainer, animatedStyle]}>
         {/* Replace with your app logo */}
         <View style={styles.logo} />
