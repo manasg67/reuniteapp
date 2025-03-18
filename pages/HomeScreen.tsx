@@ -827,19 +827,19 @@ export default function HomeScreen() {
         icon="search-outline"
         label="Search"
         color="#2196F3"
-        onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
+        onPress={() => router.push("/sightlist")}
       />
       <QuickActionButton
         icon="alert-circle-outline"
         label="Report"
         color="#FF9800"
-        onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
+        onPress={() => router.push("/sightreport")}
       />
       <QuickActionButton
         icon="people-outline"
         label="Volunteers"
         color="#9C27B0"
-        onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
+        onPress={() => router.push("/volunter")}
       />
         </View>
   )

@@ -64,9 +64,9 @@ export default function TabLayout() {
         }} 
       />
       <Tabs.Screen 
-        name="search" 
+        name="sighting" 
         options={{ 
-          title: 'Search',
+          title: 'Sighting',
           headerShown: false 
         }} 
       />

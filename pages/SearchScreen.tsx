@@ -30,7 +30,7 @@ import FilterPanel from '../components/FilterPanel';
 import VoiceSearch from '../components/VoiceSearch';
 import EmptyState from '../components/EmptyState';
 import ComparisonView from '../components/ComparisonView';
-import { mockProfiles } from '../data/mockData';
+import { mockProfiles } from '../data/mock-data';
 
 const { width } = Dimensions.get('window');
 
