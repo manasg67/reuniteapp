@@ -32,6 +32,9 @@ export default function TabLayout() {
             case 'search':
               iconName = focused ? "search" : "search-outline";
               break;
+            case 'sighting':
+              iconName = focused ? "eye" : "eye-outline";
+              break;
             case 'report':
               iconName = focused ? "alert-circle" : "alert-circle-outline";
               break;
@@ -57,16 +60,16 @@ export default function TabLayout() {
         }} 
       />
       <Tabs.Screen 
-        name="profile" 
-        options={{ 
-          title: 'Profile',
-          headerShown: false 
-        }} 
-      />
-      <Tabs.Screen 
         name="sighting" 
         options={{ 
           title: 'Sighting',
+          headerShown: false 
+        }} 
+      />
+            <Tabs.Screen 
+        name="profile" 
+        options={{ 
+          title: 'Profile',
           headerShown: false 
         }} 
       />

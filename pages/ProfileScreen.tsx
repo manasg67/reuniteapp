@@ -12,20 +12,32 @@ import {
   FlatList,
   Linking,
   Platform,
+  Dimensions,
+  StatusBar,
 } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
-import { Ionicons } from "@expo/vector-icons"
+import { Ionicons, FontAwesome5 } from "@expo/vector-icons"
 import * as Location from "expo-location"
-import MapView, { Marker, Region } from "react-native-maps"
-import { StackNavigationProp } from "@react-navigation/stack"
+import MapView, { Marker, type Region } from "react-native-maps"
+import type { StackNavigationProp } from "@react-navigation/stack"
 import { useNavigation } from "@react-navigation/native"
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring } from "react-native-reanimated"
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  withDelay,
+  withSequence,
+  withRepeat,
+} from "react-native-reanimated"
 
 // Define navigation params type
 type RootStackParamList = {
   Map: { location: { latitude: number; longitude: number } }
   ProfileScreen: undefined
 }
+
+const { width, height } = Dimensions.get("window")
 
 const virtualFamilyData = [
   {
@@ -34,6 +46,7 @@ const virtualFamilyData = [
     avatar: "https://randomuser.me/api/portraits/men/1.jpg",
     status: "Safe",
     location: { latitude: 37.78825, longitude: -122.4324 },
+    lastUpdated: "10 min ago",
   },
   {
     id: "2",
@@ -41,6 +54,7 @@ const virtualFamilyData = [
     avatar: "https://randomuser.me/api/portraits/women/2.jpg",
     status: "At Risk",
     location: { latitude: 37.7952, longitude: -122.4028 },
+    lastUpdated: "25 min ago",
   },
   {
     id: "3",
@@ -48,6 +62,7 @@ const virtualFamilyData = [
     avatar: "https://randomuser.me/api/portraits/men/3.jpg",
     status: "Safe",
     location: { latitude: 37.7749, longitude: -122.4194 },
+    lastUpdated: "1 hour ago",
   },
   {
     id: "4",
@@ -55,6 +70,7 @@ const virtualFamilyData = [
     avatar: "https://randomuser.me/api/portraits/women/4.jpg",
     status: "Safe",
     location: { latitude: 37.7833, longitude: -122.4233 },
+    lastUpdated: "2 hours ago",
   },
   {
     id: "5",
@@ -62,27 +78,53 @@ const virtualFamilyData = [
     avatar: "https://randomuser.me/api/portraits/men/5.jpg",
     status: "At Risk",
     location: { latitude: 37.7992, longitude: -122.4428 },
+    lastUpdated: "3 hours ago",
   },
 ]
 
 const emergencyContacts = [
-  { name: "Police", number: "911" },
-  { name: "Fire Department", number: "911" },
-  { name: "Ambulance", number: "911" },
-  { name: "Mom", number: "123-456-7890" },
+  { name: "Police", number: "911", icon: "shield" },
+  { name: "Fire Department", number: "911", icon: "fire" },
+  { name: "Ambulance", number: "911", icon: "ambulance" },
+  { name: "Mom", number: "123-456-7890", icon: "heart" },
 ]
 
 const recentReports = [
-  { id: "1", title: "Power Outage", description: "Power outage in the neighborhood." },
-  { id: "2", title: "Suspicious Activity", description: "Suspicious person reported near the park." },
+  {
+    id: "1",
+    title: "Power Outage",
+    description: "Power outage affecting 3 blocks in the downtown area. Estimated restoration time: 2 hours.",
+    time: "2 hours ago",
+    severity: "medium",
+    icon: "flash-off",
+  },
+  {
+    id: "2",
+    title: "Suspicious Activity",
+    description:
+      "Suspicious person reported near Central Park playground. Police have been notified and are investigating.",
+    time: "4 hours ago",
+    severity: "high",
+    icon: "alert-circle",
+  },
+  {
+    id: "3",
+    title: "Road Closure",
+    description: "Main Street closed between 5th and 7th Avenue due to construction. Expected to reopen tomorrow.",
+    time: "Yesterday",
+    severity: "low",
+    icon: "car",
+  },
 ]
 
 const missingPersonAlert = {
   name: "John Doe",
   age: 70,
   location: "Central Park",
-  details: "Last seen wearing a blue jacket and black pants.",
+  details: "Last seen wearing a blue jacket and black pants. Has Alzheimer's and may appear confused.",
   contact: "123-456-7890",
+  lastSeen: "Yesterday, 4:30 PM",
+  image: "https://randomuser.me/api/portraits/men/65.jpg",
 }
 
 const getStatusColor = (status: string) => {
@@ -96,24 +138,183 @@ const getStatusColor = (status: string) => {
   }
 }
 
+const getSeverityColor = (severity: string) => {
+  switch (severity) {
+    case "high":
+      return "#dc3545"
+    case "medium":
+      return "#ffc107"
+    case "low":
+      return "#28a745"
+    default:
+      return "#6c757d"
+  }
+}
+
 // New FamilyMember component to handle animation
-const FamilyMember = ({ 
-  item, 
-  onViewMap 
-}: { 
-  item: (typeof virtualFamilyData)[0]; 
-  onViewMap: (location: { latitude: number; longitude: number }) => void;
+const FamilyMember = ({
+  item,
+  onViewMap,
+  index,
+}: {
+  item: (typeof virtualFamilyData)[0]
+  onViewMap: (location: { latitude: number; longitude: number }) => void
+  index: number
+}) => {
+  const opacity = useSharedValue(0)
+  const translateY = useSharedValue(50)
+  const scale = useSharedValue(0.8)
+  const pulseAnim = useSharedValue(1)
+
+  useEffect(() => {
+    const delay = index * 150
+    opacity.value = withDelay(delay, withTiming(1, { duration: 600 }))
+    translateY.value = withDelay(delay, withSpring(0, { damping: 12, stiffness: 100 }))
+    scale.value = withDelay(delay, withSpring(1, { damping: 12, stiffness: 100 }))
+
+    if (item.status === "At Risk") {
+      pulseAnim.value = withRepeat(
+        withSequence(withTiming(1.05, { duration: 800 }), withTiming(1, { duration: 800 })),
+        -1,
+        true,
+      )
+    }
+  }, [index])
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [
+      { translateY: translateY.value },
+      { scale: scale.value * (item.status === "At Risk" ? pulseAnim.value : 1) },
+    ],
+  }))
+
+  return (
+    <Animated.View style={[styles.familyCard, animatedStyle]}>
+      <LinearGradient
+        colors={[
+          item.status === "Safe" ? "rgba(240, 255, 244, 0.9)" : "rgba(255, 240, 240, 0.9)",
+          "rgba(255, 255, 255, 0.95)",
+        ]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.familyCardGradient}
+      >
+        <View style={styles.familyRow}>
+          <View style={styles.avatarContainer}>
+            <Image source={{ uri: item.avatar }} style={styles.avatar} />
+            <View style={[styles.statusIndicator, { backgroundColor: getStatusColor(item.status) }]} />
+          </View>
+          <View style={styles.familyInfo}>
+            <Text style={styles.familyName}>{item.name}</Text>
+            <View style={styles.statusContainer}>
+              <View style={[styles.statusDot, { backgroundColor: getStatusColor(item.status) }]} />
+              <Text style={[styles.familyStatus, { color: getStatusColor(item.status) }]}>{item.status}</Text>
+            </View>
+            <Text style={styles.lastUpdated}>{item.lastUpdated}</Text>
+          </View>
+        </View>
+
+        <View style={styles.divider} />
+
+        <View style={styles.locationInfoContainer}>
+          <Ionicons name="navigate" size={14} color="#757575" style={styles.locationInfoIcon} />
+          <Text style={styles.locationInfoText}>
+            {`${item.location.latitude.toFixed(4)}° N, ${item.location.longitude.toFixed(4)}° W`}
+          </Text>
+        </View>
+
+        <TouchableOpacity style={styles.locationButton} onPress={() => onViewMap(item.location)}>
+          <LinearGradient
+            colors={[item.status === "Safe" ? "#28a745" : "#dc3545", item.status === "Safe" ? "#218838" : "#c82333"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.locationButtonGradient}
+          >
+            <Ionicons name="location" size={16} color="#fff" />
+            <Text style={styles.locationButtonText}>View Location</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </LinearGradient>
+    </Animated.View>
+  )
+}
+
+// Emergency Contact Component
+const EmergencyContactItem = ({
+  contact,
+  index,
+  onCall,
+}: {
+  contact: (typeof emergencyContacts)[0]
+  index: number
+  onCall: (number: string) => void
+}) => {
+  const opacity = useSharedValue(0)
+  const translateX = useSharedValue(-30)
+
+  useEffect(() => {
+    const delay = index * 100
+    opacity.value = withDelay(delay, withTiming(1, { duration: 500 }))
+    translateX.value = withDelay(delay, withSpring(0, { damping: 12 }))
+  }, [index])
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateX: translateX.value }],
+  }))
+
+  const getIconName = (iconType: string) => {
+    switch (iconType) {
+      case "shield":
+        return "shield"
+      case "fire":
+        return "fire"
+      case "ambulance":
+        return "ambulance"
+      case "heart":
+        return "heart"
+      default:
+        return "call"
+    }
+  }
+
+  return (
+    <Animated.View style={[styles.emergencyContactContainer, animatedStyle]}>
+      <TouchableOpacity style={styles.emergencyContact} onPress={() => onCall(contact.number)} activeOpacity={0.7}>
+        <View style={styles.emergencyIconContainer}>
+          <FontAwesome5 name={getIconName(contact.icon)} size={18} color="#fff" />
+        </View>
+        <View style={styles.contactInfo}>
+          <Text style={styles.contactName}>{contact.name}</Text>
+          <Text style={styles.contactNumber}>{contact.number}</Text>
+        </View>
+        <View style={styles.callButtonContainer}>
+          <LinearGradient colors={["#28a745", "#218838"]} style={styles.callButton}>
+            <Ionicons name="call" size={20} color="#fff" />
+          </LinearGradient>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  )
+}
+
+// Report Item Component
+const ReportItem = ({
+  report,
+  index,
+}: {
+  report: (typeof recentReports)[0]
+  index: number
 }) => {
   const opacity = useSharedValue(0)
   const translateY = useSharedValue(20)
 
   useEffect(() => {
-    const delay = Number.parseInt(item.id) * 200
-    setTimeout(() => {
-      opacity.value = withTiming(1, { duration: 500 })
-      translateY.value = withSpring(0, { damping: 15 })
-    }, delay)
-  }, [item.id])
+    const delay = 300 + index * 150
+    opacity.value = withDelay(delay, withTiming(1, { duration: 500 }))
+    translateY.value = withDelay(delay, withSpring(0, { damping: 12 }))
+  }, [index])
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -121,36 +322,20 @@ const FamilyMember = ({
   }))
 
   return (
-    <Animated.View style={[styles.familyCard, animatedStyle]}>
-      <LinearGradient
-        colors={[item.status === "Safe" ? "#F0FFF4" : "#FFF0F0", "#FFFFFF"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.familyCardGradient}
-      >
-        <View style={styles.familyRow}>
-          <Image
-            source={{ uri: item.avatar }}
-            style={[styles.avatar, { borderColor: getStatusColor(item.status) }]}
-          />
-          <View style={styles.familyInfo}>
-            <Text style={styles.familyName}>{item.name}</Text>
-            <View style={styles.statusContainer}>
-              <View style={[styles.statusDot, { backgroundColor: getStatusColor(item.status) }]} />
-              <Text style={[styles.familyStatus, { color: getStatusColor(item.status) }]}>{item.status}</Text>
-            </View>
+    <Animated.View style={[styles.reportItemContainer, animatedStyle]}>
+      <View style={styles.reportItem}>
+        <View style={[styles.reportSeverityIndicator, { backgroundColor: getSeverityColor(report.severity) }]} />
+        <View style={styles.reportIconContainer}>
+          <Ionicons name={report.icon as any} size={24} color={getSeverityColor(report.severity)} />
+        </View>
+        <View style={styles.reportContent}>
+          <View style={styles.reportHeader}>
+            <Text style={styles.reportTitle}>{report.title}</Text>
+            <Text style={styles.reportTime}>{report.time}</Text>
           </View>
-          <TouchableOpacity style={styles.locationButton} onPress={() => onViewMap(item.location)}>
-            <Ionicons name="location-outline" size={20} color="#4A90E2" />
-          </TouchableOpacity>
+          <Text style={styles.reportDescription}>{report.description}</Text>
         </View>
-        <View style={styles.locationInfoContainer}>
-          <Ionicons name="navigate" size={14} color="#757575" style={styles.locationInfoIcon} />
-          <Text style={styles.locationInfoText}>
-            {`${item.location.latitude.toFixed(4)}° N, ${item.location.longitude.toFixed(4)}° W`}
-          </Text>
-        </View>
-      </LinearGradient>
+      </View>
     </Animated.View>
   )
 }
@@ -160,8 +345,32 @@ const ProfileScreen = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [mapRegion, setMapRegion] = useState<Region | null>(null)
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
+  const [activeTab, setActiveTab] = useState("family")
+
+  // Animation values
+  const headerScale = useSharedValue(0.9)
+  const headerOpacity = useSharedValue(0)
+  const mapScale = useSharedValue(0.95)
+  const mapOpacity = useSharedValue(0)
+  const alertPulse = useSharedValue(1)
 
   useEffect(() => {
+    // Animate header
+    headerScale.value = withTiming(1, { duration: 800 })
+    headerOpacity.value = withTiming(1, { duration: 800 })
+
+    // Animate map
+    mapScale.value = withDelay(600, withSpring(1, { damping: 12 }))
+    mapOpacity.value = withDelay(600, withTiming(1, { duration: 500 }))
+
+    // Pulse animation for alert
+    alertPulse.value = withRepeat(
+      withSequence(withTiming(1.03, { duration: 1000 }), withTiming(1, { duration: 1000 })),
+      -1,
+      true,
+    )
+
+    // Get location
     ;(async () => {
       const { status } = await Location.requestForegroundPermissionsAsync()
       if (status !== "granted") {
@@ -175,18 +384,25 @@ const ProfileScreen = () => {
       setMapRegion({
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
+        latitudeDelta: 0.0122,
+        longitudeDelta: 0.0121,
       })
     })()
   }, [])
 
-  let text = "Waiting..."
-  if (errorMsg) {
-    text = errorMsg
-  } else if (location) {
-    text = JSON.stringify(location)
-  }
+  const headerAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: headerOpacity.value,
+    transform: [{ scale: headerScale.value }],
+  }))
+
+  const mapAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: mapOpacity.value,
+    transform: [{ scale: mapScale.value }],
+  }))
+
+  const alertAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: alertPulse.value }],
+  }))
 
   const handleCallEmergencyContact = (number: string) => {
     let phoneNumber = number
@@ -210,268 +426,708 @@ const ProfileScreen = () => {
     navigation.navigate("Map", { location })
   }
 
-  const renderFamilyMember = ({ item }: { item: (typeof virtualFamilyData)[0] }) => (
-    <FamilyMember item={item} onViewMap={handleViewMap} />
+  const renderFamilyMember = ({ item, index }: { item: (typeof virtualFamilyData)[0]; index: number }) => (
+    <FamilyMember item={item} onViewMap={handleViewMap} index={index} />
   )
-
-  const emergencyCardOpacity = useSharedValue(0)
-  const emergencyCardTranslateY = useSharedValue(20)
-
-  useEffect(() => {
-    setTimeout(() => {
-      emergencyCardOpacity.value = withTiming(1, { duration: 500 })
-      emergencyCardTranslateY.value = withSpring(0, { damping: 15 })
-    }, 200)
-  }, [])
-
-  const emergencyCardAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: emergencyCardOpacity.value,
-    transform: [{ translateY: emergencyCardTranslateY.value }],
-  }))
-
-  const familySectionOpacity = useSharedValue(0)
-  const familySectionTranslateY = useSharedValue(20)
-
-  useEffect(() => {
-    setTimeout(() => {
-      familySectionOpacity.value = withTiming(1, { duration: 500 })
-      familySectionTranslateY.value = withSpring(0, { damping: 15 })
-    }, 300)
-  }, [])
-
-  const familySectionAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: familySectionOpacity.value,
-    transform: [{ translateY: familySectionTranslateY.value }],
-  }))
-
-  const reportsCardOpacity = useSharedValue(0)
-  const reportsCardTranslateY = useSharedValue(20)
-
-  useEffect(() => {
-    setTimeout(() => {
-      reportsCardOpacity.value = withTiming(1, { duration: 500 })
-      reportsCardTranslateY.value = withSpring(0, { damping: 15 })
-    }, 400)
-  }, [])
-
-  const reportsCardAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: reportsCardOpacity.value,
-    transform: [{ translateY: reportsCardTranslateY.value }],
-  }))
-
-  const alertCardOpacity = useSharedValue(0)
-  const alertCardTranslateY = useSharedValue(20)
-
-  useEffect(() => {
-    setTimeout(() => {
-      alertCardOpacity.value = withTiming(1, { duration: 500 })
-      alertCardTranslateY.value = withSpring(0, { damping: 15 })
-    }, 500)
-  }, [])
-
-  const alertCardAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: alertCardOpacity.value,
-    transform: [{ translateY: alertCardTranslateY.value }],
-  }))
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.header}>
-          <Image source={{ uri: "https://randomuser.me/api/portraits/men/8.jpg" }} style={styles.profileImage} />
+      <StatusBar barStyle="light-content" />
+
+      <LinearGradient
+        colors={["#1A365D", "#2B6CB0"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}
+      >
+        <Animated.View style={[styles.header, headerAnimatedStyle]}>
+          <View style={styles.profileImageContainer}>
+            <Image source={{ uri: "https://randomuser.me/api/portraits/men/8.jpg" }} style={styles.profileImage} />
+            <View style={styles.onlineIndicator} />
+          </View>
+
           <View style={styles.headerText}>
             <Text style={styles.name}>John Doe</Text>
-            <Text style={styles.location}>New York, USA</Text>
+            <View style={styles.locationRow}>
+              <Ionicons name="location" size={16} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.location}>New York, USA</Text>
+            </View>
+            <View style={styles.statusBadge}>
+              <Text style={styles.statusBadgeText}>Safe</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity style={styles.settingsButton}>
+            <Ionicons name="settings-outline" size={24} color="#fff" />
+          </TouchableOpacity>
+        </Animated.View>
+      </LinearGradient>
+
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === "family" && styles.activeTab]}
+          onPress={() => setActiveTab("family")}
+        >
+          <Ionicons name="people" size={20} color={activeTab === "family" ? "#2B6CB0" : "#64748B"} />
+          <Text style={[styles.tabText, activeTab === "family" && styles.activeTabText]}>Family</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === "alerts" && styles.activeTab]}
+          onPress={() => setActiveTab("alerts")}
+        >
+          <Ionicons name="warning" size={20} color={activeTab === "alerts" ? "#2B6CB0" : "#64748B"} />
+          <Text style={[styles.tabText, activeTab === "alerts" && styles.activeTabText]}>Alerts</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === "map" && styles.activeTab]}
+          onPress={() => setActiveTab("map")}
+        >
+          <Ionicons name="map" size={20} color={activeTab === "map" ? "#2B6CB0" : "#64748B"} />
+          <Text style={[styles.tabText, activeTab === "map" && styles.activeTabText]}>Map</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        {/* Emergency Contacts Section */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleContainer}>
+              <Ionicons name="alert-circle" size={20} color="#dc3545" />
+              <Text style={styles.sectionTitle}>Emergency Contacts</Text>
+            </View>
+            <TouchableOpacity style={styles.sectionAction}>
+              <Text style={styles.sectionActionText}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.emergencyContactsContainer}>
+            {emergencyContacts.map((contact, index) => (
+              <EmergencyContactItem key={index} contact={contact} index={index} onCall={handleCallEmergencyContact} />
+            ))}
           </View>
         </View>
 
-        <Animated.View style={[styles.card, styles.emergencyCard, emergencyCardAnimatedStyle]}>
-          <Text style={styles.cardTitle}>Emergency Contacts</Text>
-          {emergencyContacts.map((contact, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.emergencyContact}
-              onPress={() => handleCallEmergencyContact(contact.number)}
-            >
-              <View style={styles.contactInfo}>
-                <Text style={styles.contactName}>{contact.name}</Text>
-                <Text style={styles.contactNumber}>{contact.number}</Text>
+        {/* Virtual Family Section */}
+        {activeTab === "family" && (
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleContainer}>
+                <Ionicons name="people" size={20} color="#2B6CB0" />
+                <Text style={styles.sectionTitle}>Virtual Family</Text>
               </View>
-              <Ionicons name="call" size={24} color="#28a745" />
-            </TouchableOpacity>
-          ))}
-        </Animated.View>
-
-        <Animated.View style={[styles.sectionContainer, familySectionAnimatedStyle]}>
-          <Text style={styles.sectionTitle}>Virtual Family</Text>
-          <FlatList
-            horizontal
-            data={virtualFamilyData}
-            keyExtractor={(item) => item.id}
-            renderItem={renderFamilyMember}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.familyList}
-          />
-        </Animated.View>
-
-        <Animated.View style={[styles.card, styles.reportsCard, reportsCardAnimatedStyle]}>
-          <Text style={styles.cardTitle}>Recent Reports</Text>
-          {recentReports.map((report) => (
-            <View key={report.id} style={styles.reportItem}>
-              <Text style={styles.reportTitle}>{report.title}</Text>
-              <Text style={styles.reportDescription}>{report.description}</Text>
+              <TouchableOpacity style={styles.sectionAction}>
+                <Text style={styles.sectionActionText}>View All</Text>
+              </TouchableOpacity>
             </View>
-          ))}
-        </Animated.View>
 
-        <Animated.View style={[styles.card, styles.alertCard, alertCardAnimatedStyle]}>
-          <Text style={styles.cardTitle}>Missing Person Alert</Text>
-          <Text style={styles.alertName}>Name: {missingPersonAlert.name}</Text>
-          <Text style={styles.alertDetails}>
-            Age: {missingPersonAlert.age}, Location: {missingPersonAlert.location}
-          </Text>
-          <Text style={styles.alertDetails}>Details: {missingPersonAlert.details}</Text>
-          <TouchableOpacity onPress={() => handleCallEmergencyContact(missingPersonAlert.contact)}>
-            <Text style={styles.alertContact}>Contact: {missingPersonAlert.contact}</Text>
-          </TouchableOpacity>
-        </Animated.View>
-
-        {mapRegion && (
-          <View style={styles.mapContainer}>
-            <Text style={styles.mapTitle}>Your Current Location</Text>
-            <MapView 
-              style={styles.map} 
-              region={mapRegion}
-            >
-              <Marker 
-                coordinate={{
-                  latitude: mapRegion.latitude,
-                  longitude: mapRegion.longitude,
-                }} 
-                title="Your Location" 
-              />
-            </MapView>
+            <FlatList
+              horizontal
+              data={virtualFamilyData}
+              keyExtractor={(item) => item.id}
+              renderItem={renderFamilyMember}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.familyList}
+            />
           </View>
+        )}
+
+        {/* Recent Reports Section */}
+        {activeTab === "alerts" && (
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleContainer}>
+                <Ionicons name="newspaper" size={20} color="#2B6CB0" />
+                <Text style={styles.sectionTitle}>Recent Reports</Text>
+              </View>
+              <TouchableOpacity style={styles.sectionAction}>
+                <Text style={styles.sectionActionText}>View All</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.reportsContainer}>
+              {recentReports.map((report, index) => (
+                <ReportItem key={report.id} report={report} index={index} />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Missing Person Alert */}
+        {activeTab === "alerts" && (
+          <Animated.View style={[styles.alertCardContainer, alertAnimatedStyle]}>
+            <LinearGradient
+              colors={["#fff3cd", "#fff8e6"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.alertCard}
+            >
+              <View style={styles.alertHeader}>
+                <View style={styles.alertTitleContainer}>
+                  <Ionicons name="warning" size={22} color="#856404" />
+                  <Text style={styles.alertTitle}>Missing Person Alert</Text>
+                </View>
+                <Text style={styles.alertTime}>{missingPersonAlert.lastSeen}</Text>
+              </View>
+
+              <View style={styles.alertContent}>
+                <Image source={{ uri: missingPersonAlert.image }} style={styles.missingPersonImage} />
+
+                <View style={styles.alertDetails}>
+                  <Text style={styles.alertName}>
+                    {missingPersonAlert.name}, {missingPersonAlert.age}
+                  </Text>
+                  <Text style={styles.alertLocation}>
+                    <Ionicons name="location" size={14} color="#856404" /> {missingPersonAlert.location}
+                  </Text>
+                  <Text style={styles.alertDescription}>{missingPersonAlert.details}</Text>
+                </View>
+              </View>
+
+              <View style={styles.alertActions}>
+                <TouchableOpacity
+                  style={styles.alertAction}
+                  onPress={() => handleCallEmergencyContact(missingPersonAlert.contact)}
+                >
+                  <LinearGradient
+                    colors={["#ffc107", "#e0a800"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.alertActionButton}
+                  >
+                    <Ionicons name="call" size={16} color="#fff" />
+                    <Text style={styles.alertActionText}>Call</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.alertAction}>
+                  <LinearGradient
+                    colors={["#17a2b8", "#138496"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.alertActionButton}
+                  >
+                    <Ionicons name="share-social" size={16} color="#fff" />
+                    <Text style={styles.alertActionText}>Share</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.alertAction}>
+                  <LinearGradient
+                    colors={["#28a745", "#218838"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.alertActionButton}
+                  >
+                    <Ionicons name="information-circle" size={16} color="#fff" />
+                    <Text style={styles.alertActionText}>Details</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+          </Animated.View>
+        )}
+
+        {/* Map Section */}
+        {activeTab === "map" && mapRegion && (
+          <Animated.View style={[styles.mapContainer, mapAnimatedStyle]}>
+            <View style={styles.mapHeader}>
+              <View style={styles.mapTitleContainer}>
+                <Ionicons name="location" size={20} color="#2B6CB0" />
+                <Text style={styles.mapTitle}>Your Current Location</Text>
+              </View>
+              <Text style={styles.mapUpdated}>Updated 2 min ago</Text>
+            </View>
+
+            <View style={styles.mapWrapper}>
+              <MapView 
+                style={styles.map} 
+                region={mapRegion}
+                showsUserLocation={true}
+                showsMyLocationButton={true}
+                loadingEnabled={true}
+              >
+                {location && (
+                  <Marker
+                    coordinate={{
+                      latitude: mapRegion.latitude,
+                      longitude: mapRegion.longitude,
+                    }}
+                    title="Your Location"
+                  >
+                    <View style={styles.markerContainer}>
+                      <View style={styles.markerInner}>
+                        <View style={styles.markerDot} />
+                      </View>
+                      <View style={styles.markerRipple} />
+                    </View>
+                  </Marker>
+                )}
+
+                {virtualFamilyData.map((member) => (
+                  <Marker
+                    key={member.id}
+                    coordinate={{
+                      latitude: member.location.latitude,
+                      longitude: member.location.longitude,
+                    }}
+                    title={member.name}
+                    description={`Status: ${member.status}`}
+                  >
+                    <View style={styles.familyMarkerContainer}>
+                      <Image source={{ uri: member.avatar }} style={styles.familyMarkerImage} />
+                      <View style={[styles.familyMarkerStatus, { backgroundColor: getStatusColor(member.status) }]} />
+                    </View>
+                  </Marker>
+                ))}
+              </MapView>
+
+              <View style={styles.mapOverlay}>
+                <TouchableOpacity style={styles.mapActionButton}>
+                  <Ionicons name="navigate" size={24} color="#fff" />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.mapActionButton}>
+                  <Ionicons name="refresh" size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.mapFooter}>
+              <View style={styles.mapLegendItem}>
+                <View style={[styles.mapLegendDot, { backgroundColor: "#28a745" }]} />
+                <Text style={styles.mapLegendText}>Safe</Text>
+              </View>
+
+              <View style={styles.mapLegendItem}>
+                <View style={[styles.mapLegendDot, { backgroundColor: "#dc3545" }]} />
+                <Text style={styles.mapLegendText}>At Risk</Text>
+              </View>
+
+              <View style={styles.mapLegendItem}>
+                <View style={[styles.mapLegendDot, { backgroundColor: "#007bff" }]} />
+                <Text style={styles.mapLegendText}>You</Text>
+              </View>
+            </View>
+          </Animated.View>
         )}
       </ScrollView>
     </SafeAreaView>
   )
 }
 
+const mapStyle = [
+  {
+    elementType: "geometry",
+    stylers: [
+      {
+        color: "#f5f5f5",
+      },
+    ],
+  },
+  {
+    elementType: "labels.icon",
+    stylers: [
+      {
+        visibility: "off",
+      },
+    ],
+  },
+  {
+    elementType: "labels.text.fill",
+    stylers: [
+      {
+        color: "#616161",
+      },
+    ],
+  },
+  {
+    elementType: "labels.text.stroke",
+    stylers: [
+      {
+        color: "#f5f5f5",
+      },
+    ],
+  },
+  {
+    featureType: "administrative.land_parcel",
+    elementType: "labels.text.fill",
+    stylers: [
+      {
+        color: "#bdbdbd",
+      },
+    ],
+  },
+  {
+    featureType: "poi",
+    elementType: "geometry",
+    stylers: [
+      {
+        color: "#eeeeee",
+      },
+    ],
+  },
+  {
+    featureType: "poi",
+    elementType: "labels.text.fill",
+    stylers: [
+      {
+        color: "#757575",
+      },
+    ],
+  },
+  {
+    featureType: "poi.park",
+    elementType: "geometry",
+    stylers: [
+      {
+        color: "#e5e5e5",
+      },
+    ],
+  },
+  {
+    featureType: "poi.park",
+    elementType: "labels.text.fill",
+    stylers: [
+      {
+        color: "#9e9e9e",
+      },
+    ],
+  },
+  {
+    featureType: "road",
+    elementType: "geometry",
+    stylers: [
+      {
+        color: "#ffffff",
+      },
+    ],
+  },
+  {
+    featureType: "road.arterial",
+    elementType: "labels.text.fill",
+    stylers: [
+      {
+        color: "#757575",
+      },
+    ],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "geometry",
+    stylers: [
+      {
+        color: "#dadada",
+      },
+    ],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "labels.text.fill",
+    stylers: [
+      {
+        color: "#616161",
+      },
+    ],
+  },
+  {
+    featureType: "road.local",
+    elementType: "labels.text.fill",
+    stylers: [
+      {
+        color: "#9e9e9e",
+      },
+    ],
+  },
+  {
+    featureType: "transit.line",
+    elementType: "geometry",
+    stylers: [
+      {
+        color: "#e5e5e5",
+      },
+    ],
+  },
+  {
+    featureType: "transit.station",
+    elementType: "geometry",
+    stylers: [
+      {
+        color: "#eeeeee",
+      },
+    ],
+  },
+  {
+    featureType: "water",
+    elementType: "geometry",
+    stylers: [
+      {
+        color: "#c9c9c9",
+      },
+    ],
+  },
+  {
+    featureType: "water",
+    elementType: "labels.text.fill",
+    stylers: [
+      {
+        color: "#9e9e9e",
+      },
+    ],
+  },
+]
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#f8fafc",
   },
-  scrollContainer: {
-    padding: 20,
+  headerGradient: {
+    paddingTop: Platform.OS === "ios" ? 0 : StatusBar.currentHeight,
+    paddingHorizontal: 20,
+    paddingBottom: 30,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 20,
+    paddingTop: 15,
+  },
+  profileImageContainer: {
+    position: "relative",
   },
   profileImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    marginRight: 20,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    borderWidth: 3,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  onlineIndicator: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#28a745",
+    borderWidth: 2,
+    borderColor: "#fff",
   },
   headerText: {
-    flexDirection: "column",
+    marginLeft: 15,
+    flex: 1,
   },
   name: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "bold",
+    color: "#fff",
+    marginBottom: 4,
+  },
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   location: {
-    fontSize: 16,
-    color: "#777",
+    fontSize: 14,
+    color: "rgba(255,255,255,0.8)",
+    marginLeft: 4,
   },
-  card: {
+  statusBadge: {
+    marginTop: 8,
+    backgroundColor: "rgba(40, 167, 69, 0.2)",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "rgba(40, 167, 69, 0.3)",
+  },
+  statusBadgeText: {
+    color: "#28a745",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  settingsButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  tabsContainer: {
+    flexDirection: "row",
     backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 20,
-    marginBottom: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 30,
+    marginHorizontal: 20,
+    marginTop: -20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 5,
+    justifyContent: "space-between",
   },
-  emergencyCard: {
-    backgroundColor: "#f8d7da",
+  tab: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
   },
-  reportsCard: {
-    backgroundColor: "#e9ecef",
+  activeTab: {
+    backgroundColor: "rgba(43, 108, 176, 0.1)",
   },
-  alertCard: {
-    backgroundColor: "#fff3cd",
+  tabText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#64748B",
+    marginLeft: 6,
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 15,
+  activeTabText: {
+    color: "#2B6CB0",
   },
-  emergencyContact: {
+  scrollContainer: {
+    padding: 20,
+    paddingTop: 15,
+  },
+  sectionContainer: {
+    marginBottom: 25,
+  },
+  sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    marginBottom: 15,
+  },
+  sectionTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1A365D",
+    marginLeft: 8,
+  },
+  sectionAction: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 15,
+    backgroundColor: "rgba(43, 108, 176, 0.1)",
+  },
+  sectionActionText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#2B6CB0",
+  },
+  emergencyContactsContainer: {
     backgroundColor: "#fff",
-    borderRadius: 8,
+    borderRadius: 12,
+    padding: 15,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  emergencyContactContainer: {
+    marginBottom: 10,
+  },
+  emergencyContact: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.05)",
+  },
+  emergencyIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#dc3545",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
   },
   contactInfo: {
-    flexDirection: "column",
+    flex: 1,
   },
   contactName: {
     fontSize: 16,
     fontWeight: "600",
+    color: "#1A365D",
+    marginBottom: 2,
   },
   contactNumber: {
     fontSize: 14,
-    color: "#777",
+    color: "#64748B",
   },
-  sectionContainer: {
-    marginBottom: 20,
+  callButtonContainer: {
+    marginLeft: 10,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 15,
+  callButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
   },
   familyList: {
     paddingRight: 20,
+    paddingBottom: 10,
   },
   familyCard: {
-    width: 150,
-    height: 150,
-    borderRadius: 10,
-    marginRight: 10,
+    width: 180,
+    height: 200,
+    borderRadius: 12,
+    marginRight: 15,
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: 5,
     elevation: 3,
   },
   familyCardGradient: {
     flex: 1,
-    padding: 10,
+    padding: 15,
+    justifyContent: "space-between",
   },
   familyRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 5,
+  },
+  avatarContainer: {
+    position: "relative",
+    marginRight: 10,
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     borderWidth: 2,
-    marginRight: 10,
+    borderColor: "#fff",
+  },
+  statusIndicator: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: "#fff",
   },
   familyInfo: {
     flex: 1,
@@ -479,14 +1135,13 @@ const styles = StyleSheet.create({
   familyName: {
     fontSize: 16,
     fontWeight: "bold",
-  },
-  familyStatus: {
-    fontSize: 12,
-    color: "#28a745",
+    color: "#1A365D",
+    marginBottom: 2,
   },
   statusContainer: {
     flexDirection: "row",
     alignItems: "center",
+    marginBottom: 2,
   },
   statusDot: {
     width: 8,
@@ -494,62 +1149,385 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginRight: 5,
   },
-  locationButton: {
-    padding: 5,
-    borderRadius: 5,
+  familyStatus: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  lastUpdated: {
+    fontSize: 11,
+    color: "#64748B",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "rgba(0,0,0,0.05)",
+    marginVertical: 10,
   },
   locationInfoContainer: {
     flexDirection: "row",
     alignItems: "center",
+    marginBottom: 10,
   },
   locationInfoIcon: {
     marginRight: 5,
   },
   locationInfoText: {
-    fontSize: 10,
-    color: "#757575",
+    fontSize: 12,
+    color: "#64748B",
+  },
+  locationButton: {
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  locationButtonGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  locationButtonText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+    marginLeft: 5,
+  },
+  reportsContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 15,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  reportItemContainer: {
+    marginBottom: 15,
   },
   reportItem: {
-    marginBottom: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#ddd",
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.05)",
+  },
+  reportSeverityIndicator: {
+    width: 4,
+    borderRadius: 2,
+    marginRight: 12,
+  },
+  reportIconContainer: {
+    marginRight: 12,
+    alignSelf: "flex-start",
+    marginTop: 2,
+  },
+  reportContent: {
+    flex: 1,
+  },
+  reportHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 5,
   },
   reportTitle: {
     fontSize: 16,
     fontWeight: "bold",
+    color: "#1A365D",
+  },
+  reportTime: {
+    fontSize: 12,
+    color: "#64748B",
   },
   reportDescription: {
     fontSize: 14,
-    color: "#555",
+    color: "#4A5568",
+    lineHeight: 20,
+  },
+  alertCardContainer: {
+    borderRadius: 12,
+    overflow: "hidden",
+    marginBottom: 25,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  alertCard: {
+    padding: 15,
+  },
+  alertHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 15,
+  },
+  alertTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  alertTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#856404",
+    marginLeft: 8,
+  },
+  alertTime: {
+    fontSize: 12,
+    color: "#856404",
+    opacity: 0.8,
+  },
+  alertContent: {
+    flexDirection: "row",
+    marginBottom: 15,
+  },
+  missingPersonImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 10,
+    marginRight: 15,
+  },
+  alertDetails: {
+    flex: 1,
   },
   alertName: {
     fontSize: 16,
     fontWeight: "bold",
+    color: "#856404",
+    marginBottom: 5,
   },
-  alertDetails: {
+  alertLocation: {
     fontSize: 14,
-    color: "#555",
+    color: "#856404",
+    marginBottom: 5,
   },
-  alertContact: {
+  alertDescription: {
     fontSize: 14,
-    color: "#007bff",
-    textDecorationLine: "underline",
+    color: "#856404",
+    opacity: 0.9,
+    lineHeight: 20,
+  },
+  alertActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  alertAction: {
+    flex: 1,
+    marginHorizontal: 5,
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  alertActionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+  },
+  alertActionText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+    marginLeft: 5,
   },
   mapContainer: {
-    borderRadius: 10,
+    borderRadius: 12,
     overflow: "hidden",
-    marginBottom: 20,
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 3,
+    marginBottom: 25,
+  },
+  mapHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.05)",
+  },
+  mapTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   mapTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
-    padding: 10,
-    backgroundColor: "#fff",
+    color: "#1A365D",
+    marginLeft: 8,
+  },
+  mapUpdated: {
+    fontSize: 12,
+    color: "#64748B",
+  },
+  mapWrapper: {
+    position: "relative",
+    height: 300,
   },
   map: {
-    height: 300,
+    ...StyleSheet.absoluteFillObject,
+  },
+  mapOverlay: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    flexDirection: "column",
+  },
+  mapActionButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(43, 108, 176, 0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  mapFooter: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    padding: 10,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.05)",
+  },
+  mapLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  mapLegendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 5,
+  },
+  mapLegendText: {
+    fontSize: 12,
+    color: "#64748B",
+  },
+  markerContainer: {
+    position: "relative",
+    width: 30,
+    height: 30,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  markerInner: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(0, 123, 255, 0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  markerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#007bff",
+  },
+  markerRipple: {
+    position: "absolute",
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(0, 123, 255, 0.15)",
+  },
+  familyMarkerContainer: {
+    position: "relative",
+  },
+  familyMarkerImage: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  familyMarkerStatus: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: "#fff",
+  },
+  bottomBar: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.05)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  bottomBarButton: {
+    padding: 10,
+    position: "relative",
+  },
+  notificationBadge: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#dc3545",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#fff",
+  },
+  notificationBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "bold",
+  },
+  sosButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    overflow: "hidden",
+    marginTop: -25,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  sosButtonGradient: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sosButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
   },
 })
 
 export default ProfileScreen
+

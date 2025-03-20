@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -19,19 +20,30 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import useAuthStore from "../store/auth";
 
 const LoginScreen: React.FC = () => {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const { login, isAuthenticated } = useAuthStore(); // Added isAuthenticated for debugging
+
   const logoScale = useSharedValue(0);
   const formOpacity = useSharedValue(0);
   const buttonScale = useSharedValue(1);
 
   useEffect(() => {
     logoScale.value = withSpring(1, { damping: 12 });
-    formOpacity.value = withSequence(
+    formOpacity.value = withSequence( 
       withTiming(0, { duration: 200 }),
       withTiming(1, { duration: 800 })
     );
-  }, []);
+
+    // Debug: Check if user is already authenticated
+    console.log("Is Authenticated on Mount:", isAuthenticated);
+    if (isAuthenticated) {
+      router.replace("/(tabs)/home");
+    }
+  }, [isAuthenticated]);
 
   const logoAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: logoScale.value }],
@@ -47,13 +59,53 @@ const LoginScreen: React.FC = () => {
     transform: [{ scale: buttonScale.value }],
   }));
 
-  const handleLoginPress = () => {
-    buttonScale.value = withSequence(
-      withSpring(0.95, { damping: 15 }),
-      withSpring(1)
-    );
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.push("/(tabs)/home");
+  const handleLoginPress = async () => {
+    try {
+      buttonScale.value = withSequence(
+        withSpring(0.95, { damping: 15 }),
+        withSpring(1)
+      );
+
+      if (!username || !password) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert("Validation Error", "Please enter both email and password");
+        return;
+      }
+
+      console.log("Attempting login with:", { username, password });
+
+      const response = await fetch('http://192.168.0.102:8000/api/accounts/login/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+      console.log("API Response:", data); // Debug: Log the API response
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Login failed');
+      }
+
+      // Ensure the data structure matches what login expects
+      login(data.user, data.tokens);
+      console.log("Auth Store Updated, isAuthenticated:", useAuthStore.getState().isAuthenticated);
+
+      // Add a slight delay to ensure state propagation
+      setTimeout(() => {
+        router.replace("/(tabs)/home");
+        console.log("Navigation triggered to home");
+      }, 100);
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    } catch (error) {
+      console.error("Login Error:", error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Login Failed", error instanceof Error ? error.message : "Please check your credentials");
+    }
   };
 
   const handleSignUpRedirect = () => {
@@ -94,6 +146,8 @@ const LoginScreen: React.FC = () => {
               placeholderTextColor="#757575"
               keyboardType="email-address"
               autoCapitalize="none"
+              value={username}
+              onChangeText={setUsername}
             />
           </View>
 
@@ -109,6 +163,8 @@ const LoginScreen: React.FC = () => {
               placeholder="Password"
               placeholderTextColor="#757575"
               secureTextEntry
+              value={password}
+              onChangeText={setPassword}
             />
           </View>
 
