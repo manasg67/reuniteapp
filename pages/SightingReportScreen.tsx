@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react"
+import React, { useState, useRef, useEffect } from "react"
 import MapView, { Marker, Region } from 'react-native-maps'
 import * as Location from 'expo-location'
 import {
@@ -22,50 +22,23 @@ import { SafeAreaView } from "react-native-safe-area-context"
 import * as ImagePicker from "expo-image-picker"
 import Slider from "@react-native-community/slider"
 import DateTimePicker from "@react-native-community/datetimepicker"
+import useAuthStore from "../store/auth"
+import useProfileStore from "../store/profile"
 
-// Mock data for missing persons
-const mockMissingPersons = [
-  {
-    id: "MP-2023-0089",
-    name: "Sarah Johnson",
-    age: 28,
-    lastSeen: "2 days ago",
-    photo: "https://randomuser.me/api/portraits/women/44.jpg",
-    isRecent: true,
-  },
-  {
-    id: "MP-2023-0076",
-    name: "Michael Chen",
-    age: 34,
-    lastSeen: "5 days ago",
-    photo: "https://randomuser.me/api/portraits/men/32.jpg",
-    isRecent: true,
-  },
-  {
-    id: "MP-2023-0102",
-    name: "David Wilson",
-    age: 17,
-    lastSeen: "1 week ago",
-    photo: "https://randomuser.me/api/portraits/men/67.jpg",
-    isRecent: true,
-  },
-  {
-    id: "MP-2023-0065",
-    name: "Emily Rodriguez",
-    age: 22,
-    lastSeen: "2 weeks ago",
-    photo: "https://randomuser.me/api/portraits/women/33.jpg",
-    isRecent: false,
-  },
-  {
-    id: "MP-2023-0054",
-    name: "James Thompson",
-    age: 41,
-    lastSeen: "3 weeks ago",
-    photo: "https://randomuser.me/api/portraits/men/45.jpg",
-    isRecent: false,
-  },
-]
+interface MissingPersonData {
+  id: number;
+  case_number: string;
+  name: string;
+  age_when_missing: number;
+  recent_photo: string | null;
+  last_seen_location: string;
+  last_seen_date: string;
+  status: string;
+  emergency_contact_phone: string;
+  last_seen_details: string;
+  last_seen_wearing: string;
+  created_at: string;
+}
 
 interface Photo {
   id: string;
@@ -73,23 +46,23 @@ interface Photo {
 }
 
 interface FormData {
-  missingPerson: any;
-  dateTime: Date;
+  missingPerson: MissingPersonData | null;
   location: string;
-  useCurrentLocation: boolean;
-  isEmergency: boolean;
-  photos: Photo[];
+  latitude: string;
+  longitude: string;
+  location_type: "INDOOR" | "OUTDOOR";
+  crowd_density: "LOW" | "MEDIUM" | "HIGH";
+  observed_behavior: string;
+  confidence_level_numeric: number;
+  willing_to_contact: boolean;
+  companions: "ALONE" | "WITH_ADULTS" | "WITH_CHILDREN" | "UNKNOWN";
+  timestamp: Date;
   description: string;
-  appearance: string;
-  companions: string;
-  behavior: string[];
-  confidenceLevel: number;
-  reporterName: string;
-  reporterContact: string;
-  isAnonymous: boolean;
-  allowFollowUp: boolean;
-  locationType: string;
-  crowdDensity: string;
+  photos: Photo[];
+  location_details: string;
+  direction_headed: string;
+  wearing: string;
+  useCurrentLocation: boolean;
 }
 
 // Step component
@@ -121,70 +94,73 @@ export default function SightingReportScreen() {
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState<FormData>({
     missingPerson: null,
-    dateTime: new Date(),
     location: "",
-    useCurrentLocation: true,
-    isEmergency: false,
-    photos: [],
+    latitude: "",
+    longitude: "",
+    location_type: "OUTDOOR",
+    crowd_density: "MEDIUM",
+    observed_behavior: "",
+    confidence_level_numeric: 85,
+    willing_to_contact: true,
+    companions: "ALONE",
+    timestamp: new Date(),
     description: "",
-    appearance: "",
-    companions: "alone",
-    behavior: [],
-    confidenceLevel: 70,
-    reporterName: "",
-    reporterContact: "",
-    isAnonymous: false,
-    allowFollowUp: true,
-    locationType: "",
-    crowdDensity: "",
+    photos: [],
+    location_details: "",
+    direction_headed: "",
+    wearing: "",
+    useCurrentLocation: true,
   })
 
   const [searchQuery, setSearchQuery] = useState("")
   const [showCamera, setShowCamera] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
-  const [filteredPersons, setFilteredPersons] = useState(mockMissingPersons)
+  const [missingPersons, setMissingPersons] = useState<MissingPersonData[]>([])
+  const [filteredPersons, setFilteredPersons] = useState<MissingPersonData[]>([])
   const [userLocation, setUserLocation] = useState<Region | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const { tokens } = useAuthStore();
+  const { profile } = useProfileStore();
 
   // Animation values
   const slideAnim = useRef(new Animated.Value(0)).current
 
-  React.useEffect(() => {
-    (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync()
-      if (status !== 'granted') {
-        setErrorMsg('Permission to access location was denied')
-        return
+  // Fetch missing persons data
+  useEffect(() => {
+    const fetchMissingPersons = async () => {
+      try {
+        const response = await fetch('https://6a84-106-193-251-230.ngrok-free.app/api/missing-persons/missing-persons/list_all/', {
+          headers: {
+            'Authorization': `Bearer ${tokens?.access}`,
+            'Accept': 'application/json',
+            'ngrok-skip-browser-warning': 'true'
+          },
+        });
+        const data = await response.json();
+        setMissingPersons(data.results);
+        setFilteredPersons(data.results);
+      } catch (error) {
+        console.error('Error fetching missing persons:', error);
+        Alert.alert('Error', 'Failed to load missing persons data');
       }
+    };
 
-      let location = await Location.getCurrentPositionAsync({})
-      setUserLocation({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-      })
-      
-      // Update formData with coordinates if using current location
-      if (formData.useCurrentLocation) {
-        updateFormData('location', `${location.coords.latitude}, ${location.coords.longitude}`)
-      }
-    })()
-  }, [])
+    fetchMissingPersons();
+  }, []);
 
   // Filter missing persons based on search query
   React.useEffect(() => {
     if (searchQuery) {
-      const filtered = mockMissingPersons.filter(
+      const filtered = missingPersons.filter(
         (person) =>
           person.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          person.id.toLowerCase().includes(searchQuery.toLowerCase()),
+          person.case_number.toLowerCase().includes(searchQuery.toLowerCase()),
       )
       setFilteredPersons(filtered)
     } else {
-      setFilteredPersons(mockMissingPersons)
+      setFilteredPersons(missingPersons)
     }
-  }, [searchQuery])
+  }, [searchQuery, missingPersons])
 
   // Handle step transitions with animation
   const goToNextStep = () => {
@@ -243,7 +219,7 @@ export default function SightingReportScreen() {
   const handleDateChange = (event: any, selectedDate: any) => {
     setShowDatePicker(false)
     if (selectedDate) {
-      updateFormData("dateTime", selectedDate)
+      updateFormData("timestamp", selectedDate)
     }
   }
 
@@ -279,46 +255,159 @@ export default function SightingReportScreen() {
 
   // Handle behavior toggle
   const toggleBehavior = (behavior: string) => {
-    if (formData.behavior.includes(behavior)) {
-      updateFormData("behavior", formData.behavior.filter((b) => b !== behavior))
+    const currentBehavior = formData.observed_behavior;
+    const behaviors = currentBehavior ? currentBehavior.split(', ') : [];
+    
+    if (behaviors.includes(behavior)) {
+      updateFormData(
+        "observed_behavior",
+        behaviors.filter(b => b !== behavior).join(', ')
+      );
     } else {
-      updateFormData("behavior", [...formData.behavior, behavior])
+      updateFormData(
+        "observed_behavior",
+        behaviors.length > 0 ? `${currentBehavior}, ${behavior}` : behavior
+      );
     }
-  }
+  };
 
   // Handle form submission
-  const handleSubmit = () => {
-    // In a real app, this would send the data to a server
-    console.log("Submitting report:", formData)
+  const handleSubmit = async () => {
+    try {
+      const formDataToSend = new FormData();
+      
+      // Add missing person ID if selected
+      if (formData.missingPerson) {
+        formDataToSend.append('missing_person', formData.missingPerson.id.toString());
+      }
 
-    // Animate to confirmation screen
-    Animated.timing(slideAnim, {
-      toValue: -300,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      setCurrentStep(7) // Go to confirmation step
-      slideAnim.setValue(300)
+      // Format and validate location details
+      if (!formData.location) {
+        Alert.alert('Error', 'Please provide a location description');
+        return;
+      }
+      if (!formData.location_details) {
+        Alert.alert('Error', 'Please provide location details');
+        return;
+      }
 
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start()
-    })
-  }
+      // Format coordinates to have max 9 digits total
+      const formatCoordinate = (coord: string) => {
+        const num = parseFloat(coord);
+        return num.toFixed(6); // Format to 6 decimal places to stay within 9 total digits
+      };
+
+      // Add location details
+      formDataToSend.append('location', formData.location);
+      formDataToSend.append('latitude', formData.useCurrentLocation 
+        ? formatCoordinate(userLocation?.latitude?.toString() || '') 
+        : formatCoordinate(formData.latitude));
+      formDataToSend.append('longitude', formData.useCurrentLocation 
+        ? formatCoordinate(userLocation?.longitude?.toString() || '') 
+        : formatCoordinate(formData.longitude));
+      formDataToSend.append('location_type', formData.location_type);
+      formDataToSend.append('crowd_density', formData.crowd_density);
+      formDataToSend.append('location_details', formData.location_details);
+      formDataToSend.append('direction_headed', formData.direction_headed || '');
+
+      // Add behavioral details
+      formDataToSend.append('observed_behavior', formData.observed_behavior || '');
+      formDataToSend.append('confidence_level_numeric', formData.confidence_level_numeric.toString());
+      formDataToSend.append('companions', formData.companions);
+      formDataToSend.append('description', formData.description);
+      formDataToSend.append('wearing', formData.wearing || '');
+
+      // Add timestamp
+      formDataToSend.append('timestamp', formData.timestamp.toISOString());
+
+      // Add willing to contact
+      formDataToSend.append('willing_to_contact', formData.willing_to_contact.toString());
+
+      // Add photo if available
+      if (formData.photos.length > 0) {
+        const photo = formData.photos[0];
+        const photoName = photo.uri.split('/').pop() || 'photo.jpg';
+        const photoFile = {
+          uri: photo.uri,
+          type: 'image/jpeg',
+          name: photoName,
+        };
+        formDataToSend.append('photo', photoFile as any);
+      }
+
+      console.log('Submitting form data:', Object.fromEntries(formDataToSend));
+
+      const response = await fetch('https://6a84-106-193-251-230.ngrok-free.app/api/sightings/sightings/', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${tokens?.access}`,
+          'Accept': 'application/json',
+          'Content-Type': 'multipart/form-data',
+        },
+        body: formDataToSend,
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        console.error('Server response:', responseData);
+        const errorMessages = Object.entries(responseData)
+          .map(([key, value]) => `${key}: ${value}`)
+          .join('\n');
+        throw new Error(`Validation errors:\n${errorMessages}`);
+      }
+
+      // Show success message and navigate
+      Alert.alert('Success', 'Sighting report submitted successfully');
+      router.push("/sightlist");
+
+    } catch (error) {
+      console.error('Error submitting sighting report:', error);
+      Alert.alert(
+        'Error',
+        error instanceof Error ? error.message : 'Failed to submit sighting report. Please check your internet connection and try again.',
+        [
+          { text: 'OK' }
+        ]
+      );
+    }
+  };
 
   // Format date for display
-  const formatDate = (date: any) => {
-    return date.toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      hour12: true,
-    })
-  }
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  // Add location handling
+  useEffect(() => {
+    (async () => {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setErrorMsg('Permission to access location was denied');
+        return;
+      }
+
+      let location = await Location.getCurrentPositionAsync({});
+      const region = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.005,
+        longitudeDelta: 0.005
+      };
+      setUserLocation(region);
+      
+      // Update form data with location
+      if (formData.useCurrentLocation) {
+        updateFormData('latitude', location.coords.latitude.toString());
+        updateFormData('longitude', location.coords.longitude.toString());
+      }
+    })();
+  }, [formData.useCurrentLocation]);
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
@@ -351,7 +440,7 @@ export default function SightingReportScreen() {
                     <Feather name="search" size={16} color="#64748B" style={styles.searchIcon} />
                     <TextInput
                       style={styles.searchInput}
-                      placeholder="Search by name or ID..."
+                      placeholder="Search by name or case number..."
                       value={searchQuery}
                       onChangeText={setSearchQuery}
                       placeholderTextColor="#64748B"
@@ -369,24 +458,27 @@ export default function SightingReportScreen() {
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.recentCasesContainer}
                   >
-                    {mockMissingPersons
-                      .filter((p) => p.isRecent)
+                    {filteredPersons
+                      .filter(p => new Date(p.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)) // Last 7 days
                       .map((person) => (
                         <TouchableOpacity
                           key={person.id}
                           style={[
                             styles.personCard,
-                         formData.missingPerson?.id === person.id && styles.selectedPersonCard,
+                            formData.missingPerson?.id === person.id && styles.selectedPersonCard,
                           ]}
                           onPress={() => selectMissingPerson(person)}
                           activeOpacity={0.7}
                         >
-                          <Image source={{ uri: person.photo }} style={styles.personPhoto} />
+                          <Image 
+                            source={{ uri: person.recent_photo || 'https://via.placeholder.com/150' }} 
+                            style={styles.personPhoto} 
+                          />
                           <Text style={styles.personName} numberOfLines={1}>
                             {person.name}
                           </Text>
-                          <Text style={styles.personAge}>{person.age} years old</Text>
-                          <Text style={styles.personLastSeen}>Last seen: {person.lastSeen}</Text>
+                          <Text style={styles.personAge}>{person.age_when_missing} years old</Text>
+                          <Text style={styles.personLastSeen}>Last seen: {formatDate(person.last_seen_date)}</Text>
                         </TouchableOpacity>
                       ))}
                   </ScrollView>
@@ -403,10 +495,16 @@ export default function SightingReportScreen() {
                         onPress={() => selectMissingPerson(person)}
                         activeOpacity={0.7}
                       >
-                        <Image source={{ uri: person.photo }} style={styles.personListPhoto} />
+                        <Image 
+                          source={{ uri: person.recent_photo || 'https://via.placeholder.com/150' }} 
+                          style={styles.personListPhoto} 
+                        />
                         <View style={styles.personListInfo}>
                           <Text style={styles.personListName}>{person.name}</Text>
-                          <Text style={styles.personListId}>{person.id}</Text>
+                          <Text style={styles.personListId}>Case #{person.case_number}</Text>
+                          <Text style={styles.personListDetails}>
+                            Last seen: {formatDate(person.last_seen_date)} at {person.last_seen_location}
+                          </Text>
                         </View>
                       </TouchableOpacity>
                     ))}
@@ -427,14 +525,14 @@ export default function SightingReportScreen() {
                       style={styles.checkbox}
                       onPress={() => {
                         updateFormData("missingPerson", null)
-                        updateFormData("isEmergency", !formData.isEmergency)
+                        updateFormData("willing_to_contact", false)
                       }}
                     >
-                      <View style={[styles.checkboxBox, formData.isEmergency && styles.checkboxChecked]}>
-                        {formData.isEmergency && <Feather name="check" size={12} color="white" />}
+                      <View style={[styles.checkboxBox, !formData.willing_to_contact && styles.checkboxChecked]}>
+                        {!formData.willing_to_contact && <Feather name="check" size={12} color="white" />}
                       </View>
                       <Text style={styles.checkboxLabel}>
-                        This is an emergency situation requiring immediate attention
+                        I am not willing to be contacted for follow-up questions
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -446,14 +544,14 @@ export default function SightingReportScreen() {
                   <TouchableOpacity style={styles.dateTimeButton} onPress={() => setShowDatePicker(true)}>
                     <Text style={styles.dateTimeLabel}>When did you see this person?</Text>
                     <View style={styles.dateTimeDisplay}>
-                      <Text style={styles.dateTimeText}>{formatDate(formData.dateTime)}</Text>
+                      <Text style={styles.dateTimeText}>{formatDate(formData.timestamp.toISOString())}</Text>
                       <Feather name="calendar" size={16} color="#1A365D" />
                     </View>
                   </TouchableOpacity>
 
                   {showDatePicker && (
                     <DateTimePicker
-                      value={formData.dateTime}
+                      value={formData.timestamp}
                       mode="datetime"
                       display="default"
                       style={{ marginTop: 20 }}
@@ -473,43 +571,43 @@ export default function SightingReportScreen() {
 
             {/* Step 2: Location Details */}
             {currentStep === 2 && (
-    <View style={styles.stepContent}>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Location Information</Text>
+              <View style={styles.stepContent}>
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Location Information</Text>
 
-        <View style={styles.mapContainer}>
-          {userLocation ? (
-            <MapView
-              style={styles.map}
-              initialRegion={userLocation}
-              showsUserLocation={true}
-              showsMyLocationButton={true}
-              onRegionChangeComplete={(region) => {
-                if (!formData.useCurrentLocation) {
-                  updateFormData('location', `${region.latitude}, ${region.longitude}`)
-                }
-              }}
-            >
-              <Marker
-                coordinate={{
-                  latitude: userLocation.latitude,
-                  longitude: userLocation.longitude,
-                }}
-                title="Current Location"
-              />
-            </MapView>
-          ) : errorMsg ? (
-            <View style={styles.mapPlaceholder}>
-              <Feather name="alert-triangle" size={32} color="#EF4444" />
-              <Text style={styles.mapPlaceholderText}>{errorMsg}</Text>
-            </View>
-          ) : (
-            <View style={styles.mapPlaceholder}>
-              <Feather name="map-pin" size={32} color="#2B6CB0" />
-              <Text style={styles.mapPlaceholderText}>Loading Map...</Text>
-            </View>
-          )}
-        </View>
+                  <View style={styles.mapContainer}>
+                    {userLocation ? (
+                      <MapView
+                        style={styles.map}
+                        initialRegion={userLocation}
+                        showsUserLocation={true}
+                        showsMyLocationButton={true}
+                        onRegionChangeComplete={(region) => {
+                          if (!formData.useCurrentLocation) {
+                            updateFormData('location', `${region.latitude}, ${region.longitude}`)
+                          }
+                        }}
+                      >
+                        <Marker
+                          coordinate={{
+                            latitude: userLocation.latitude,
+                            longitude: userLocation.longitude,
+                          }}
+                          title="Current Location"
+                        />
+                      </MapView>
+                    ) : errorMsg ? (
+                      <View style={styles.mapPlaceholder}>
+                        <Feather name="alert-triangle" size={32} color="#EF4444" />
+                        <Text style={styles.mapPlaceholderText}>{errorMsg}</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.mapPlaceholder}>
+                        <Feather name="map-pin" size={32} color="#2B6CB0" />
+                        <Text style={styles.mapPlaceholderText}>Loading Map...</Text>
+                      </View>
+                    )}
+                  </View>
 
                   <View style={styles.inputContainer}>
                     <Text style={styles.inputLabel}>Address or Description</Text>
@@ -522,6 +620,25 @@ export default function SightingReportScreen() {
                       numberOfLines={3}
                       placeholderTextColor="#64748B"
                     />
+                  </View>
+
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>
+                      Location Details
+                      <Text style={styles.requiredLabel}> (required)</Text>
+                    </Text>
+                    <TextInput
+                      style={styles.textArea}
+                      placeholder="Provide specific details about the location (e.g., near which store, which floor, specific landmarks)..."
+                      value={formData.location_details}
+                      onChangeText={(text) => updateFormData("location_details", text)}
+                      multiline
+                      numberOfLines={3}
+                      placeholderTextColor="#64748B"
+                    />
+                    <Text style={styles.inputHelp}>
+                      Include any landmarks, specific areas, or details that would help locate the exact spot
+                    </Text>
                   </View>
 
                   <View style={styles.switchContainer}>
@@ -547,8 +664,21 @@ export default function SightingReportScreen() {
                       "Southwest",
                       "Unknown",
                     ].map((direction) => (
-                      <TouchableOpacity key={direction} style={styles.directionButton} activeOpacity={0.7}>
-                        <Text style={styles.directionButtonText}>{direction}</Text>
+                      <TouchableOpacity 
+                        key={direction} 
+                        style={[
+                          styles.directionButton,
+                          formData.direction_headed === direction && styles.selectedDirectionButton
+                        ]} 
+                        onPress={() => updateFormData("direction_headed", direction)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[
+                          styles.directionButtonText,
+                          formData.direction_headed === direction && styles.selectedDirectionButtonText
+                        ]}>
+                          {direction}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -561,20 +691,20 @@ export default function SightingReportScreen() {
                   <View style={styles.radioGroup}>
                     <TouchableOpacity
                       style={styles.radioOption}
-                      onPress={() => updateFormData("locationType", "indoor")}
+                      onPress={() => updateFormData("location_type", "INDOOR")}
                     >
                       <View style={styles.radioButton}>
-                        {formData.locationType === "indoor" && <View style={styles.radioButtonSelected} />}
+                        {formData.location_type === "INDOOR" && <View style={styles.radioButtonSelected} />}
                       </View>
                       <Text style={styles.radioLabel}>Indoor</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       style={styles.radioOption}
-                      onPress={() => updateFormData("locationType", "outdoor")}
+                      onPress={() => updateFormData("location_type", "OUTDOOR")}
                     >
                       <View style={styles.radioButton}>
-                        {formData.locationType === "outdoor" && <View style={styles.radioButtonSelected} />}
+                        {formData.location_type === "OUTDOOR" && <View style={styles.radioButtonSelected} />}
                       </View>
                       <Text style={styles.radioLabel}>Outdoor</Text>
                     </TouchableOpacity>
@@ -584,30 +714,30 @@ export default function SightingReportScreen() {
                   <View style={styles.radioGroup}>
                     <TouchableOpacity
                       style={styles.radioOption}
-                      onPress={() => updateFormData("crowdDensity", "empty")}
+                      onPress={() => updateFormData("crowd_density", "LOW")}
                     >
                       <View style={styles.radioButton}>
-                        {formData.crowdDensity === "empty" && <View style={styles.radioButtonSelected} />}
+                        {formData.crowd_density === "LOW" && <View style={styles.radioButtonSelected} />}
                       </View>
                       <Text style={styles.radioLabel}>Empty/Few People</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       style={styles.radioOption}
-                      onPress={() => updateFormData("crowdDensity", "moderate")}
+                      onPress={() => updateFormData("crowd_density", "MEDIUM")}
                     >
                       <View style={styles.radioButton}>
-                        {formData.crowdDensity === "moderate" && <View style={styles.radioButtonSelected} />}
+                        {formData.crowd_density === "MEDIUM" && <View style={styles.radioButtonSelected} />}
                       </View>
                       <Text style={styles.radioLabel}>Moderately Crowded</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       style={styles.radioOption}
-                      onPress={() => updateFormData("crowdDensity", "crowded")}
+                      onPress={() => updateFormData("crowd_density", "HIGH")}
                     >
                       <View style={styles.radioButton}>
-                        {formData.crowdDensity === "crowded" && <View style={styles.radioButtonSelected} />}
+                        {formData.crowd_density === "HIGH" && <View style={styles.radioButtonSelected} />}
                       </View>
                       <Text style={styles.radioLabel}>Very Crowded</Text>
                     </TouchableOpacity>
@@ -762,8 +892,8 @@ export default function SightingReportScreen() {
                     <TextInput
                       style={styles.textArea}
                       placeholder="Describe the person's appearance, clothing, and any distinguishing features..."
-                      value={formData.appearance}
-                      onChangeText={(text) => updateFormData("appearance", text)}
+                      value={formData.wearing}
+                      onChangeText={(text) => updateFormData("wearing", text)}
                       multiline
                       numberOfLines={3}
                       placeholderTextColor="#64748B"
@@ -772,39 +902,39 @@ export default function SightingReportScreen() {
 
                   <Text style={styles.sectionTitle}>Companions</Text>
                   <View style={styles.radioGroup}>
-                    <TouchableOpacity style={styles.radioOption} onPress={() => updateFormData("companions", "alone")}>
+                    <TouchableOpacity style={styles.radioOption} onPress={() => updateFormData("companions", "ALONE")}>
                       <View style={styles.radioButton}>
-                        {formData.companions === "alone" && <View style={styles.radioButtonSelected} />}
+                        {formData.companions === "ALONE" && <View style={styles.radioButtonSelected} />}
                       </View>
                       <Text style={styles.radioLabel}>Person was alone</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       style={styles.radioOption}
-                      onPress={() => updateFormData("companions", "with-adults")}
+                      onPress={() => updateFormData("companions", "WITH_ADULTS")}
                     >
                       <View style={styles.radioButton}>
-                        {formData.companions === "with-adults" && <View style={styles.radioButtonSelected} />}
+                        {formData.companions === "WITH_ADULTS" && <View style={styles.radioButtonSelected} />}
                       </View>
                       <Text style={styles.radioLabel}>With other adults</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       style={styles.radioOption}
-                      onPress={() => updateFormData("companions", "with-children")}
+                      onPress={() => updateFormData("companions", "WITH_CHILDREN")}
                     >
                       <View style={styles.radioButton}>
-                        {formData.companions === "with-children" && <View style={styles.radioButtonSelected} />}
+                        {formData.companions === "WITH_CHILDREN" && <View style={styles.radioButtonSelected} />}
                       </View>
                       <Text style={styles.radioLabel}>With children</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       style={styles.radioOption}
-                      onPress={() => updateFormData("companions", "unknown")}
+                      onPress={() => updateFormData("companions", "UNKNOWN")}
                     >
                       <View style={styles.radioButton}>
-                        {formData.companions === "unknown" && <View style={styles.radioButtonSelected} />}
+                        {formData.companions === "UNKNOWN" && <View style={styles.radioButtonSelected} />}
                       </View>
                       <Text style={styles.radioLabel}>Unsure</Text>
                     </TouchableOpacity>
@@ -820,9 +950,9 @@ export default function SightingReportScreen() {
                           onPress={() => toggleBehavior(behavior)}
                         >
                           <View
-                            style={[styles.checkboxBox, formData.behavior.includes(behavior) && styles.checkboxChecked]}
+                            style={[styles.checkboxBox, formData.observed_behavior.includes(behavior) && styles.checkboxChecked]}
                           >
-                            {formData.behavior.includes(behavior) && <Feather name="check" size={12} color="white" />}
+                            {formData.observed_behavior.includes(behavior) && <Feather name="check" size={12} color="white" />}
                           </View>
                           <Text style={styles.checkboxLabel}>
                             {behavior.charAt(0).toUpperCase() + behavior.slice(1)}
@@ -840,15 +970,15 @@ export default function SightingReportScreen() {
                       minimumValue={0}
                       maximumValue={100}
                       step={10}
-                      value={formData.confidenceLevel}
-                      onValueChange={(value) => updateFormData("confidenceLevel", value)}
+                      value={formData.confidence_level_numeric}
+                      onValueChange={(value) => updateFormData("confidence_level_numeric", value)}
                       minimumTrackTintColor="#2B6CB0"
                       maximumTrackTintColor="#E2E8F0"
                       thumbTintColor="#2B6CB0"
                     />
                     <Text style={styles.confidenceLabel}>High</Text>
                   </View>
-                  <Text style={styles.confidenceValue}>{formData.confidenceLevel}% confident in identification</Text>
+                  <Text style={styles.confidenceValue}>{formData.confidence_level_numeric}% confident in identification</Text>
                 </View>
 
                 <View style={styles.navigationButtons}>
@@ -881,72 +1011,12 @@ export default function SightingReportScreen() {
                   <View style={styles.checkboxContainer}>
                     <TouchableOpacity
                       style={styles.checkbox}
-                      onPress={() => {
-                        const newValue = !formData.isAnonymous
-                        updateFormData("isAnonymous", newValue)
-                        if (newValue) {
-                          updateFormData("reporterName", "")
-                          updateFormData("reporterContact", "")
-                          updateFormData("allowFollowUp", false)
-                        } else {
-                          updateFormData("allowFollowUp", true)
-                        }
-                      }}
+                      onPress={() => updateFormData("willing_to_contact", !formData.willing_to_contact)}
                     >
-                      <View style={[styles.checkboxBox, formData.isAnonymous && styles.checkboxChecked]}>
-                        {formData.isAnonymous && <Feather name="check" size={12} color="white" />}
+                      <View style={[styles.checkboxBox, formData.willing_to_contact && styles.checkboxChecked]}>
+                        {formData.willing_to_contact && <Feather name="check" size={12} color="white" />}
                       </View>
-                      <Text style={styles.checkboxLabel}>I wish to remain anonymous</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {!formData.isAnonymous && (
-                    <>
-                      <View style={styles.inputContainer}>
-                        <Text style={styles.inputLabel}>Your Name</Text>
-                        <TextInput
-                          style={styles.input}
-                          placeholder="Enter your full name"
-                          value={formData.reporterName}
-                          onChangeText={(text) => updateFormData("reporterName", text)}
-                          placeholderTextColor="#64748B"
-                        />
-                      </View>
-
-                      <View style={styles.inputContainer}>
-                        <Text style={styles.inputLabel}>Contact Information (phone or email)</Text>
-                        <TextInput
-                          style={styles.input}
-                          placeholder="Enter your phone number or email address"
-                          value={formData.reporterContact}
-                          onChangeText={(text) => updateFormData("reporterContact", text)}
-                          placeholderTextColor="#64748B"
-                        />
-                        <Text style={styles.inputHelp}>
-                          This will only be used for follow-up questions about this sighting.
-                        </Text>
-                      </View>
-                    </>
-                  )}
-
-                  <View style={styles.checkboxContainer}>
-                    <TouchableOpacity
-                      style={styles.checkbox}
-                      onPress={() => updateFormData("allowFollowUp", !formData.allowFollowUp)}
-                      disabled={formData.isAnonymous}
-                    >
-                      <View
-                        style={[
-                          styles.checkboxBox,
-                          formData.allowFollowUp && !formData.isAnonymous && styles.checkboxChecked,
-                          formData.isAnonymous && styles.checkboxDisabled,
-                        ]}
-                      >
-                        {formData.allowFollowUp && !formData.isAnonymous && (
-                          <Feather name="check" size={12} color="white" />
-                        )}
-                      </View>
-                      <Text style={[styles.checkboxLabel, formData.isAnonymous && styles.disabledText]}>
+                      <Text style={styles.checkboxLabel}>
                         I am willing to be contacted for follow-up questions
                       </Text>
                     </TouchableOpacity>
@@ -973,6 +1043,14 @@ export default function SightingReportScreen() {
                       <Text style={styles.legalItemText}>You are willing to assist in the investigation if needed</Text>
                     </View>
                   </View>
+
+                  <TouchableOpacity 
+                    style={[styles.submitButton, !formData.description && styles.submitButtonDisabled]}
+                    onPress={handleSubmit}
+                    disabled={!formData.description}
+                  >
+                    <Text style={styles.submitButtonText}>Submit Report</Text>
+                  </TouchableOpacity>
                 </View>
 
                 <View style={styles.navigationButtons}>
@@ -1237,6 +1315,10 @@ const styles = StyleSheet.create({
     color: "#111827",
   },
   personListId: {
+    fontSize: 14,
+    color: "#6B7280",
+  },
+  personListDetails: {
     fontSize: 14,
     color: "#6B7280",
   },
@@ -1687,6 +1769,19 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     backgroundColor: "#48BB78",
+    paddingVertical: 15,
+    paddingHorizontal: 25,
+    borderRadius: 6,
+    alignItems: "center",
+    marginTop: 20,
+  },
+  submitButtonDisabled: {
+    backgroundColor: "#9CA3AF",
+  },
+  submitButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "500",
   },
   confirmationContainer: {
     alignItems: "center",
@@ -1946,6 +2041,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#2B6CB0",
     marginLeft: 5,
+  },
+  selectedDirectionButton: {
+    backgroundColor: "#2B6CB0",
+  },
+  selectedDirectionButtonText: {
+    color: "white",
+    fontWeight: "500",
   },
 })
 

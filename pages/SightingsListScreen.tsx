@@ -12,6 +12,8 @@ import {
   Image,
   Dimensions,
   Modal,
+  Alert,
+  ScrollView,
 } from "react-native"
 import { Feather } from "@expo/vector-icons"
 import { useNavigation } from "@react-navigation/native"
@@ -19,6 +21,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { FlashList } from "@shopify/flash-list"
 import { router } from "expo-router"
+import useAuthStore from "../store/auth"
 
 // Define the navigation param list
 type RootStackParamList = {
@@ -27,6 +30,59 @@ type RootStackParamList = {
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+interface SightingData {
+  id: number;
+  missing_person: {
+    id: number;
+    case_number: string;
+    name: string;
+    recent_photo: string | null;
+  } | null;
+  missing_person_name: string;
+  reporter_name: string;
+  location: string;
+  timestamp: string;
+  verification_status: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  confidence_level: 'LOW' | 'MEDIUM' | 'HIGH';
+  photo: string | null;
+  location_type: 'INDOOR' | 'OUTDOOR';
+  crowd_density: 'LOW' | 'MEDIUM' | 'HIGH';
+  observed_behavior: string;
+  confidence_level_numeric: number;
+  willing_to_contact: boolean;
+  companions: 'ALONE' | 'WITH_ADULTS' | 'WITH_CHILDREN' | 'UNKNOWN';
+  created_at: string;
+}
+
+interface APIResponse {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: SightingData[];
+  statistics: {
+    total_count: number;
+    verified_count: number;
+    pending_count: number;
+    with_photo_count: number;
+  };
+}
+
+interface Filters {
+  verification_status: 'all' | 'PENDING' | 'VERIFIED' | 'REJECTED';
+  confidence_level: 'all' | 'LOW' | 'MEDIUM' | 'HIGH';
+  time_period: 'all' | 'today' | 'week' | 'month';
+  location_type: 'all' | 'INDOOR' | 'OUTDOOR';
+  crowd_density: 'all' | 'LOW' | 'MEDIUM' | 'HIGH';
+  willing_to_contact: 'all' | 'true' | 'false';
+  start_date?: string;
+  end_date?: string;
+  latitude?: string;
+  longitude?: string;
+  distance?: string;
+  search?: string;
+  ordering?: string;
+}
 
 // Mock data for sightings
 const mockSightings = [
@@ -402,25 +458,30 @@ const SightingItemSkeleton = () => (
 )
 
 // Filter modal component
-const FilterModal = ({ visible, onClose, filters, onFilterChange }: { visible: boolean, onClose: () => void, filters: any, onFilterChange: (filters: any) => void }) => {
-  const [localFilters, setLocalFilters] = useState({ ...filters })
+const FilterModal = ({ visible, onClose, filters, onFilterChange }: { visible: boolean, onClose: () => void, filters: Filters, onFilterChange: (filters: Filters) => void }) => {
+  const [localFilters, setLocalFilters] = useState<Filters>({ ...filters });
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [dateType, setDateType] = useState<'start' | 'end'>('start');
 
   const handleApply = () => {
-    onFilterChange(localFilters)
-    onClose()
-  }
+    onFilterChange(localFilters);
+    onClose();
+  };
 
   const handleReset = () => {
-    const resetFilters = {
-      status: "all",
-      priority: "all",
-      dateRange: "all",
-      associated: "all",
-    }
-    setLocalFilters(resetFilters)
-    onFilterChange(resetFilters)
-    onClose()
-  }
+    const resetFilters: Filters = {
+      verification_status: "all",
+      confidence_level: "all",
+      time_period: "all",
+      location_type: "all",
+      crowd_density: "all",
+      willing_to_contact: "all",
+      ordering: "-timestamp"
+    };
+    setLocalFilters(resetFilters);
+    onFilterChange(resetFilters);
+    onClose();
+  };
 
   return (
     <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
@@ -433,96 +494,109 @@ const FilterModal = ({ visible, onClose, filters, onFilterChange }: { visible: b
             </TouchableOpacity>
           </View>
 
-          <View style={styles.filterSection}>
-            <Text style={styles.filterSectionTitle}>Status</Text>
-            <View style={styles.filterOptions}>
-              {["all", "verified", "unverified"].map((option) => (
-                <TouchableOpacity
-                  key={option}
-                  style={[styles.filterOption, localFilters.status === option && styles.filterOptionSelected]}
-                  onPress={() => setLocalFilters({ ...localFilters, status: option })}
-                >
-                  <Text
-                    style={[styles.filterOptionText, localFilters.status === option && styles.filterOptionTextSelected]}
+          <ScrollView>
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Verification Status</Text>
+              <View style={styles.filterOptions}>
+                {["all", "PENDING", "VERIFIED", "REJECTED"].map((option) => (
+                  <TouchableOpacity
+                    key={option}
+                    style={[styles.filterOption, localFilters.verification_status === option && styles.filterOptionSelected]}
+                    onPress={() => setLocalFilters({ ...localFilters, verification_status: option as any })}
                   >
-                    {option === "all" ? "All" : option.charAt(0).toUpperCase() + option.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text style={[styles.filterOptionText, localFilters.verification_status === option && styles.filterOptionTextSelected]}>
+                      {option === "all" ? "All" : option.charAt(0) + option.slice(1).toLowerCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-          </View>
 
-          <View style={styles.filterSection}>
-            <Text style={styles.filterSectionTitle}>Priority</Text>
-            <View style={styles.filterOptions}>
-              {["all", "high", "medium", "low"].map((option) => (
-                <TouchableOpacity
-                  key={option}
-                  style={[styles.filterOption, localFilters.priority === option && styles.filterOptionSelected]}
-                  onPress={() => setLocalFilters({ ...localFilters, priority: option })}
-                >
-                  <Text
-                    style={[
-                      styles.filterOptionText,
-                      localFilters.priority === option && styles.filterOptionTextSelected,
-                    ]}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Confidence Level</Text>
+              <View style={styles.filterOptions}>
+                {["all", "LOW", "MEDIUM", "HIGH"].map((option) => (
+                  <TouchableOpacity
+                    key={option}
+                    style={[styles.filterOption, localFilters.confidence_level === option && styles.filterOptionSelected]}
+                    onPress={() => setLocalFilters({ ...localFilters, confidence_level: option as any })}
                   >
-                    {option === "all" ? "All" : option.charAt(0).toUpperCase() + option.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text style={[styles.filterOptionText, localFilters.confidence_level === option && styles.filterOptionTextSelected]}>
+                      {option === "all" ? "All" : option.charAt(0) + option.slice(1).toLowerCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-          </View>
 
-          <View style={styles.filterSection}>
-            <Text style={styles.filterSectionTitle}>Date Range</Text>
-            <View style={styles.filterOptions}>
-              {["all", "today", "week", "month"].map((option) => (
-                <TouchableOpacity
-                  key={option}
-                  style={[styles.filterOption, localFilters.dateRange === option && styles.filterOptionSelected]}
-                  onPress={() => setLocalFilters({ ...localFilters, dateRange: option })}
-                >
-                  <Text
-                    style={[
-                      styles.filterOptionText,
-                      localFilters.dateRange === option && styles.filterOptionTextSelected,
-                    ]}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Time Period</Text>
+              <View style={styles.filterOptions}>
+                {["all", "today", "week", "month"].map((option) => (
+                  <TouchableOpacity
+                    key={option}
+                    style={[styles.filterOption, localFilters.time_period === option && styles.filterOptionSelected]}
+                    onPress={() => setLocalFilters({ ...localFilters, time_period: option as any })}
                   >
-                    {option === "all"
-                      ? "All Time"
-                      : option === "today"
-                        ? "Today"
-                        : option === "week"
-                          ? "This Week"
-                          : "This Month"}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text style={[styles.filterOptionText, localFilters.time_period === option && styles.filterOptionTextSelected]}>
+                      {option === "all" ? "All Time" : option.charAt(0).toUpperCase() + option.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-          </View>
 
-          <View style={styles.filterSection}>
-            <Text style={styles.filterSectionTitle}>Missing Person Association</Text>
-            <View style={styles.filterOptions}>
-              {["all", "associated", "unassociated"].map((option) => (
-                <TouchableOpacity
-                  key={option}
-                  style={[styles.filterOption, localFilters.associated === option && styles.filterOptionSelected]}
-                  onPress={() => setLocalFilters({ ...localFilters, associated: option })}
-                >
-                  <Text
-                    style={[
-                      styles.filterOptionText,
-                      localFilters.associated === option && styles.filterOptionTextSelected,
-                    ]}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Location Type</Text>
+              <View style={styles.filterOptions}>
+                {["all", "INDOOR", "OUTDOOR"].map((option) => (
+                  <TouchableOpacity
+                    key={option}
+                    style={[styles.filterOption, localFilters.location_type === option && styles.filterOptionSelected]}
+                    onPress={() => setLocalFilters({ ...localFilters, location_type: option as any })}
                   >
-                    {option === "all" ? "All" : option.charAt(0).toUpperCase() + option.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text style={[styles.filterOptionText, localFilters.location_type === option && styles.filterOptionTextSelected]}>
+                      {option === "all" ? "All" : option.charAt(0) + option.slice(1).toLowerCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-          </View>
+
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Crowd Density</Text>
+              <View style={styles.filterOptions}>
+                {["all", "LOW", "MEDIUM", "HIGH"].map((option) => (
+                  <TouchableOpacity
+                    key={option}
+                    style={[styles.filterOption, localFilters.crowd_density === option && styles.filterOptionSelected]}
+                    onPress={() => setLocalFilters({ ...localFilters, crowd_density: option as any })}
+                  >
+                    <Text style={[styles.filterOptionText, localFilters.crowd_density === option && styles.filterOptionTextSelected]}>
+                      {option === "all" ? "All" : option.charAt(0) + option.slice(1).toLowerCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Contact Preference</Text>
+              <View style={styles.filterOptions}>
+                {["all", "true", "false"].map((option) => (
+                  <TouchableOpacity
+                    key={option}
+                    style={[styles.filterOption, localFilters.willing_to_contact === option && styles.filterOptionSelected]}
+                    onPress={() => setLocalFilters({ ...localFilters, willing_to_contact: option as any })}
+                  >
+                    <Text style={[styles.filterOptionText, localFilters.willing_to_contact === option && styles.filterOptionTextSelected]}>
+                      {option === "all" ? "All" : option === "true" ? "Willing to Contact" : "Not Willing"}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </ScrollView>
 
           <View style={styles.modalActions}>
             <TouchableOpacity style={[styles.modalButton, styles.resetButton]} onPress={handleReset}>
@@ -535,144 +609,140 @@ const FilterModal = ({ visible, onClose, filters, onFilterChange }: { visible: b
         </View>
       </View>
     </Modal>
-  )
-}
+  );
+};
 
 // Main component
 export default function SightingsListScreen() {
   const navigation = useNavigation<NavigationProp>()
-  const [sightings, setSightings] = useState<any[]>([])
-  const [filteredSightings, setFilteredSightings] = useState<any[]>([])
+  const [sightings, setSightings] = useState<SightingData[]>([])
+  const [filteredSightings, setFilteredSightings] = useState<SightingData[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [filterModalVisible, setFilterModalVisible] = useState(false)
-  const [filters, setFilters] = useState({
-    status: "all",
-    priority: "all",
-    dateRange: "all",
-    associated: "all",
+  const [filters, setFilters] = useState<Filters>({
+    verification_status: "all",
+    confidence_level: "all",
+    time_period: "all",
+    location_type: "all",
+    crowd_density: "all",
+    willing_to_contact: "all",
+    ordering: "-timestamp"
   })
+  const { tokens } = useAuthStore();
 
-  // Simulate loading data
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSightings(mockSightings as any)
-      setFilteredSightings(mockSightings as any)
-      setLoading(false)
-    }, 1500)
-
-    return () => clearTimeout(timer)
-  }, [])
-
-  // Apply filters when they change
-  useEffect(() => {
-    if (sightings.length === 0) return
-
-    let result = [...sightings]
-
-    // Apply status filter
-    if (filters.status !== "all") {
-      result = result.filter((s: any) => s.status === filters.status)
-    }
-
-    // Apply priority filter
-    if (filters.priority !== "all") {
-      result = result.filter((s: any) => s.priority === filters.priority)
-    }
-
-    // Apply date range filter
-    if (filters.dateRange !== "all") {
-      const now = new Date()
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-
-      if (filters.dateRange === "today") {
-        result = result.filter((s: any) => {
-          const date = new Date(s.timestamp)
-          return date >= today
-        })
-      } else if (filters.dateRange === "week") {
-        const weekAgo = new Date(today)
-        weekAgo.setDate(weekAgo.getDate() - 7)
-        result = result.filter((s: any) => {
-          const date = new Date(s.timestamp)
-          return date >= weekAgo
-        })
-      } else if (filters.dateRange === "month") {
-        const monthAgo = new Date(today)
-        monthAgo.setMonth(monthAgo.getMonth() - 1)
-        result = result.filter((s: any) => {
-          const date = new Date(s.timestamp)
-          return date >= monthAgo
-        })
+  // Fetch sightings data with filters
+  const fetchSightings = async () => {
+    try {
+      // Build query parameters based on filters
+      const queryParams = new URLSearchParams();
+      
+      if (filters.verification_status !== 'all') {
+        queryParams.append('verification_status', filters.verification_status);
       }
-    }
-
-    // Apply associated filter
-    if (filters.associated !== "all") {
-      if (filters.associated === "associated") {
-        result = result.filter((s: any) => s.missingPerson)
-      } else {
-        result = result.filter((s: any) => !s.missingPerson)
+      if (filters.confidence_level !== 'all') {
+        queryParams.append('confidence_level', filters.confidence_level);
       }
-    }
+      if (filters.time_period !== 'all') {
+        queryParams.append('time_period', filters.time_period);
+      }
+      if (filters.location_type !== 'all') {
+        queryParams.append('location_type', filters.location_type);
+      }
+      if (filters.crowd_density !== 'all') {
+        queryParams.append('crowd_density', filters.crowd_density);
+      }
+      if (filters.willing_to_contact !== 'all') {
+        queryParams.append('willing_to_contact', filters.willing_to_contact);
+      }
+      if (filters.start_date) {
+        queryParams.append('start_date', filters.start_date);
+      }
+      if (filters.end_date) {
+        queryParams.append('end_date', filters.end_date);
+      }
+      if (filters.latitude) {
+        queryParams.append('latitude', filters.latitude);
+      }
+      if (filters.longitude) {
+        queryParams.append('longitude', filters.longitude);
+      }
+      if (filters.distance) {
+        queryParams.append('distance', filters.distance);
+      }
+      if (searchQuery) {
+        queryParams.append('search', searchQuery);
+      }
+      if (filters.ordering) {
+        queryParams.append('ordering', filters.ordering);
+      }
 
-    // Apply search query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      result = result.filter(
-        (s: any ) =>
-          s.id.toLowerCase().includes(query) ||
-          s.location.toLowerCase().includes(query) ||
-          (s.missingPerson && s.missingPerson.name.toLowerCase().includes(query)) ||
-          (!s.anonymous && s.reporterName.toLowerCase().includes(query)),
-      )
-    }
+      const url = `https://6a84-106-193-251-230.ngrok-free.app/api/sightings/sightings/?${queryParams.toString()}`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${tokens?.access}`,
+          'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
+      });
+      
+      const data: APIResponse = await response.json();
+      
+      // Transform API data to match our UI needs
+      const transformedSightings = data.results.map(sighting => ({
+        ...sighting,
+        isNew: new Date(sighting.created_at).getTime() > Date.now() - 24 * 60 * 60 * 1000,
+      }));
 
-    setFilteredSightings(result)
-  }, [filters, searchQuery, sightings])
+      setSightings(transformedSightings);
+      setFilteredSightings(transformedSightings);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching sightings:', error);
+      Alert.alert('Error', 'Failed to load sightings data');
+      setLoading(false);
+    }
+  };
+
+  // Initial fetch
+  useEffect(() => {
+    fetchSightings();
+  }, []);
 
   // Handle refresh
-  const handleRefresh = () => {
-    setRefreshing(true)
-
-    // Simulate refresh delay
-    setTimeout(() => {
-      // Add a new sighting at the top
-      const newSighting = {
-        id: `SID-2023-${Math.floor(Math.random() * 1000)}`,
-        reporterName: "New Reporter",
-        anonymous: false,
-        location: "Downtown, Los Angeles, CA",
-        timestamp: new Date(),
-        missingPerson: {
-          id: "MP-2023-0089",
-          name: "Sarah Johnson",
-          thumbnail: "https://randomuser.me/api/portraits/women/44.jpg",
-        },
-        status: "unverified",
-        priority: "high",
-        isNew: true,
-      }
-
-      const updatedSightings = [newSighting, ...sightings]
-      setSightings(updatedSightings as any)
-      setFilteredSightings(updatedSightings as any)
-      setRefreshing(false)
-    }, 1000)
-  }
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchSightings();
+    setRefreshing(false);
+  };
 
   // Handle swipe actions
-  const handleSwipeAction = (id: string, action: string ) => {
-    console.log(`Performing ${action} on sighting ${id}`)
-
-    // Update sighting status if action is verify
+  const handleSwipeAction = async (id: number, action: string) => {
     if (action === "verify") {
-      const updatedSightings = sightings.map((s: any) => (s.id === id ? { ...s, status: "verified" } : s))
-      setSightings(updatedSightings as any)
-      setFilteredSightings(filteredSightings.map((s: any) => (s.id === id ? { ...s, status: "verified" } : s)))
+      try {
+        const response = await fetch(`https://6a84-106-193-251-230.ngrok-free.app/api/sightings/sightings/${id}/verify/`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${tokens?.access}`,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          // Refresh the sightings list
+          fetchSightings();
+        } else {
+          Alert.alert('Error', 'Failed to verify sighting');
+        }
+      } catch (error) {
+        console.error('Error verifying sighting:', error);
+        Alert.alert('Error', 'Failed to verify sighting');
+      }
     }
-  }
+  };
 
   // Group sightings by date
   const groupedSightings = groupSightingsByDate(filteredSightings)
@@ -719,8 +789,25 @@ export default function SightingsListScreen() {
     } else {
       return (
         <SightingItem
-          sighting={item.item}
-          onPress={(sighting: any) => router.push("/sightdetails")}
+          sighting={{
+            id: item.item.id,
+            reporterName: item.item.reporter_name,
+            anonymous: false,
+            location: item.item.location,
+            timestamp: new Date(item.item.timestamp),
+            missingPerson: item.item.missing_person ? {
+              id: item.item.missing_person.id,
+              name: item.item.missing_person.name,
+              thumbnail: item.item.missing_person.recent_photo || 'https://via.placeholder.com/150',
+            } : null,
+            status: item.item.verification_status.toLowerCase(),
+            priority: item.item.confidence_level.toLowerCase(),
+            isNew: new Date(item.item.timestamp).getTime() > Date.now() - 24 * 60 * 60 * 1000,
+          }}
+          onPress={(sighting: any) => router.push({
+            pathname: "/sightdetails",
+            params: { id: sighting.id }
+          })}
           onSwipeAction={handleSwipeAction}
         />
       )
@@ -737,10 +824,13 @@ export default function SightingsListScreen() {
         style={styles.resetFiltersButton}
         onPress={() => {
           setFilters({
-            status: "all",
-            priority: "all",
-            dateRange: "all",
-            associated: "all",
+            verification_status: "all",
+            confidence_level: "all",
+            time_period: "all",
+            location_type: "all",
+            crowd_density: "all",
+            willing_to_contact: "all",
+            ordering: "-timestamp"
           })
           setSearchQuery("")
         }}
@@ -816,6 +906,11 @@ export default function SightingsListScreen() {
       {/* FAB for adding new sighting */}
       <TouchableOpacity style={styles.fab} onPress={() => router.push("/sightreport")}>
         <Feather name="plus" size={24} color="white" />
+      </TouchableOpacity>
+
+      {/* Map button */}
+      <TouchableOpacity style={styles.mapButton} onPress={() => router.push("/nearbysightings")}>
+        <Feather name="map" size={24} color="white" />
       </TouchableOpacity>
 
       {/* Filter Modal */}
@@ -1139,6 +1234,22 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
+  mapButton: {
+    position: "absolute",
+    left: 16,
+    bottom: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#2B6CB0",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -1162,12 +1273,14 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   filterSection: {
-    marginBottom: 16,
+    marginBottom: 20,
+    paddingHorizontal: 4,
   },
   filterSectionTitle: {
-    fontSize: 14,
-    fontWeight: "500",
-    marginBottom: 8,
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1A202C",
+    marginBottom: 12,
   },
   filterOptions: {
     flexDirection: "row",
@@ -1181,6 +1294,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
     backgroundColor: "white",
+    minWidth: 100,
+    alignItems: "center",
   },
   filterOptionSelected: {
     backgroundColor: "#2B6CB0",
@@ -1189,14 +1304,19 @@ const styles = StyleSheet.create({
   filterOptionText: {
     fontSize: 14,
     color: "#1A202C",
+    textAlign: "center",
   },
   filterOptionTextSelected: {
     color: "white",
+    fontWeight: "500",
   },
   modalActions: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    marginTop: 8,
   },
   modalButton: {
     flex: 1,

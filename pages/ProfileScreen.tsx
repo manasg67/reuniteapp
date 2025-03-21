@@ -14,6 +14,7 @@ import {
   Platform,
   Dimensions,
   StatusBar,
+  Alert,
 } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import { Ionicons, FontAwesome5 } from "@expo/vector-icons"
@@ -30,6 +31,14 @@ import Animated, {
   withSequence,
   withRepeat,
 } from "react-native-reanimated"
+import useAuthStore from "../store/auth";
+import { persist, createJSONStorage } from "zustand/middleware";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import useProfileStore from '../store/profile';
+import * as Print from 'expo-print';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 // Define navigation params type
 type RootStackParamList = {
@@ -151,15 +160,58 @@ const getSeverityColor = (severity: string) => {
   }
 }
 
+interface VirtualFamilyMember {
+  id: string;
+  name: string;
+  avatar: string;
+  status: string;
+  location: {
+    latitude: number;
+    longitude: number;
+  };
+  lastUpdated: string;
+}
+
+interface FamilyMember {
+  id: number;
+  user: {
+    id: number;
+    username: string;
+    first_name: string;
+    last_name: string;
+    profile_picture: string | null;
+    latitude: string | null;
+    longitude: string | null;
+    city: string;
+    state: string;
+  };
+  role: string;
+  relationship: string;
+  joined_at: string;
+}
+
+// Add MissingPerson interface
+interface MissingPerson {
+  id: number;
+  case_number: string;
+  name: string;
+  age_when_missing: number;
+  recent_photo: string | null;
+  last_seen_location: string;
+  last_seen_date: string;
+  status: string;
+  emergency_contact_phone: string;
+}
+
 // New FamilyMember component to handle animation
 const FamilyMember = ({
   item,
   onViewMap,
   index,
 }: {
-  item: (typeof virtualFamilyData)[0]
-  onViewMap: (location: { latitude: number; longitude: number }) => void
-  index: number
+  item: VirtualFamilyMember;
+  onViewMap: (location: { latitude: number; longitude: number }) => void;
+  index: number;
 }) => {
   const opacity = useSharedValue(0)
   const translateY = useSharedValue(50)
@@ -200,17 +252,17 @@ const FamilyMember = ({
         end={{ x: 1, y: 1 }}
         style={styles.familyCardGradient}
       >
-        <View style={styles.familyRow}>
+      <View style={styles.familyRow}>
           <View style={styles.avatarContainer}>
             <Image source={{ uri: item.avatar }} style={styles.avatar} />
             <View style={[styles.statusIndicator, { backgroundColor: getStatusColor(item.status) }]} />
           </View>
-          <View style={styles.familyInfo}>
-            <Text style={styles.familyName}>{item.name}</Text>
+        <View style={styles.familyInfo}>
+          <Text style={styles.familyName}>{item.name}</Text>
             <View style={styles.statusContainer}>
               <View style={[styles.statusDot, { backgroundColor: getStatusColor(item.status) }]} />
               <Text style={[styles.familyStatus, { color: getStatusColor(item.status) }]}>{item.status}</Text>
-            </View>
+        </View>
             <Text style={styles.lastUpdated}>{item.lastUpdated}</Text>
           </View>
         </View>
@@ -220,7 +272,7 @@ const FamilyMember = ({
         <View style={styles.locationInfoContainer}>
           <Ionicons name="navigate" size={14} color="#757575" style={styles.locationInfoIcon} />
           <Text style={styles.locationInfoText}>
-            {`${item.location.latitude.toFixed(4)}° N, ${item.location.longitude.toFixed(4)}° W`}
+            {`${item.location.latitude ? item.location.latitude : 40.712800}° N, ${item.location.longitude ? item.location.longitude : -74.006000}° W`}
           </Text>
         </View>
 
@@ -284,7 +336,7 @@ const EmergencyContactItem = ({
       <TouchableOpacity style={styles.emergencyContact} onPress={() => onCall(contact.number)} activeOpacity={0.7}>
         <View style={styles.emergencyIconContainer}>
           <FontAwesome5 name={getIconName(contact.icon)} size={18} color="#fff" />
-        </View>
+      </View>
         <View style={styles.contactInfo}>
           <Text style={styles.contactName}>{contact.name}</Text>
           <Text style={styles.contactNumber}>{contact.number}</Text>
@@ -341,68 +393,185 @@ const ReportItem = ({
 }
 
 const ProfileScreen = () => {
+  const { tokens } = useAuthStore();
+  const { profile, setProfile } = useProfileStore();
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [location, setLocation] = useState<Location.LocationObject | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [mapRegion, setMapRegion] = useState<Region | null>(null)
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>()
   const [activeTab, setActiveTab] = useState("family")
+  const router = useRouter();
+  const [missingPersons, setMissingPersons] = useState<MissingPerson[]>([]);
 
   // Animation values
   const headerScale = useSharedValue(0.9)
   const headerOpacity = useSharedValue(0)
   const mapScale = useSharedValue(0.95)
   const mapOpacity = useSharedValue(0)
-  const alertPulse = useSharedValue(1)
 
   useEffect(() => {
-    // Animate header
-    headerScale.value = withTiming(1, { duration: 800 })
-    headerOpacity.value = withTiming(1, { duration: 800 })
-
-    // Animate map
-    mapScale.value = withDelay(600, withSpring(1, { damping: 12 }))
-    mapOpacity.value = withDelay(600, withTiming(1, { duration: 500 }))
-
-    // Pulse animation for alert
-    alertPulse.value = withRepeat(
-      withSequence(withTiming(1.03, { duration: 1000 }), withTiming(1, { duration: 1000 })),
-      -1,
-      true,
-    )
-
-    // Get location
-    ;(async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync()
-      if (status !== "granted") {
-        setErrorMsg("Permission to access location was denied")
-        return
+    const fetchUserProfile = async () => {
+      try {
+        if (!tokens?.access) {
+          console.log('No access token available');
+          router.replace('/login');
+        return;
       }
 
-      const location = await Location.getCurrentPositionAsync({})
-      setLocation(location)
+        console.log('Fetching user profile...');
+        const response = await fetch('https://6a84-106-193-251-230.ngrok-free.app/api/accounts/users/me/', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${tokens.access}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'ngrok-skip-browser-warning': 'true'
+          },
+        });
 
-      setMapRegion({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        latitudeDelta: 0.0122,
-        longitudeDelta: 0.0121,
-      })
-    })()
-  }, [])
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Profile data received:', {
+          id: data.id,
+          name: `${data.first_name} ${data.last_name}`,
+          families: data.families
+        });
+        setProfile(data);
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+        Alert.alert(
+          "Error",
+          "Failed to load profile. Please check your connection and try again."
+        );
+      }
+    };
+
+    fetchUserProfile();
+  }, [tokens]);
+
+  // Separate useEffect for fetching family members
+  useEffect(() => {
+    const fetchFamilyMembers = async () => {
+      try {
+        if (!tokens?.access || !profile?.families?.[0]?.id) {
+          console.log('Cannot fetch family members:', {
+            hasToken: !!tokens?.access,
+            hasProfile: !!profile,
+            hasFamilies: !!profile?.families,
+            familyId: profile?.families?.[0]?.id
+          });
+          return;
+        }
+
+        console.log('Fetching family members for family:', {
+          familyId: profile.families[0].id,
+          familyName: profile.families[0].name
+        });
+
+        const response = await fetch(`https://6a84-106-193-251-230.ngrok-free.app/api/accounts/families/${profile.families[0].id}/members/`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${tokens.access}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'ngrok-skip-browser-warning': 'true'
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Family members received:', {
+          count: data.length,
+          members: data.map((member: FamilyMember) => ({
+            id: member.id,
+            name: `${member.user.first_name} ${member.user.last_name}`,
+            role: member.role
+          }))
+        });
+        setFamilyMembers(data);
+      } catch (error) {
+        console.error('Error fetching family members:', error);
+        Alert.alert(
+          "Error",
+          "Failed to load family members. Please check your connection and try again."
+        );
+      }
+    };
+
+    if (profile?.families && profile.families.length > 0) {
+      console.log('Profile has families, fetching members...');
+      fetchFamilyMembers();
+    } else {
+      console.log('No families found in profile:', {
+        hasProfile: !!profile,
+        familiesLength: profile?.families?.length || 0
+      });
+    }
+  }, [profile, tokens]);
+
+  useEffect(() => {
+    fetchMissingPersons();
+  }, []);
+
+  const fetchMissingPersons = async () => {
+    try {
+      const response = await fetch('https://6a84-106-193-251-230.ngrok-free.app/api/missing-persons/missing-persons/', {
+        headers: {
+          'Authorization': `Bearer ${tokens?.access}`,
+          'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
+      });
+      const data = await response.json();
+      setMissingPersons(data);
+    } catch (error) {
+      console.error('Error fetching missing persons:', error);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  // Animate components
+  headerScale.value = withTiming(1, { duration: 800 });
+  headerOpacity.value = withTiming(1, { duration: 800 });
+  mapScale.value = withDelay(600, withSpring(1, { damping: 12 }));
+  mapOpacity.value = withDelay(600, withTiming(1, { duration: 500 }));
 
   const headerAnimatedStyle = useAnimatedStyle(() => ({
     opacity: headerOpacity.value,
     transform: [{ scale: headerScale.value }],
-  }))
+  }));
 
   const mapAnimatedStyle = useAnimatedStyle(() => ({
     opacity: mapOpacity.value,
     transform: [{ scale: mapScale.value }],
-  }))
+  }));
 
-  const alertAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: alertPulse.value }],
-  }))
+  const getMapRegion = (): Region | undefined => {
+    if (profile?.latitude && profile?.longitude) {
+      return {
+        latitude: parseFloat(profile.latitude),
+        longitude: parseFloat(profile.longitude),
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+      };
+    }
+    return undefined;
+  };
 
   const handleCallEmergencyContact = (number: string) => {
     let phoneNumber = number
@@ -426,15 +595,233 @@ const ProfileScreen = () => {
     navigation.navigate("Map", { location })
   }
 
-  const renderFamilyMember = ({ item, index }: { item: (typeof virtualFamilyData)[0]; index: number }) => (
-    <FamilyMember item={item} onViewMap={handleViewMap} index={index} />
-  )
+  const renderFamilyMember = ({ item, index }: { item: FamilyMember; index: number }) => {
+    const getStatusFromRole = (role: string) => {
+      return role === 'ADMIN' ? 'Safe' : 'Safe';
+    };
+
+    const status = getStatusFromRole(item.role);
+    const defaultImage = "https://randomuser.me/api/portraits/men/1.jpg";
+    const profilePicture = item.user.profile_picture 
+      ? `https://6a84-106-193-251-230.ngrok-free.app${item.user.profile_picture}`
+      : defaultImage;
+    
+    return (
+      <FamilyMember
+        item={{
+          id: item.id.toString(),
+          name: `${item.user.first_name} ${item.user.last_name}`,
+          avatar: profilePicture,
+          status: status,
+          location: {
+            latitude: item.user.latitude ? parseFloat(item.user.latitude) : 40.712800,
+            longitude: item.user.longitude ? parseFloat(item.user.longitude) : -74.006000
+          },
+          lastUpdated: new Date(item.joined_at).toLocaleDateString()
+        }}
+        onViewMap={handleViewMap}
+        index={index}
+      />
+    );
+  };
+
+  const createAndSharePoster = async (person: MissingPerson) => {
+    try {
+      // Create HTML content for the poster
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+            <style>
+              body { 
+                font-family: 'Helvetica'; 
+                margin: 0;
+                padding: 0;
+                background: white;
+              }
+              .header {
+                position: relative;
+                background: white;
+                padding: 20px;
+                text-align: center;
+                margin-bottom: 20px;
+              }
+              .black-bar {
+                background: black;
+                height: 50px;
+                width: 100%;
+                position: absolute;
+                top: 50%;
+                transform: translateY(-50%);
+                z-index: 1;
+              }
+              .missing-text {
+                font-size: 72px;
+                font-weight: bold;
+                color: #dc3545;
+                position: relative;
+                z-index: 2;
+                margin: 0;
+              }
+              .qr-code {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                width: 100px;
+                height: 100px;
+                z-index: 3;
+              }
+              .qr-text {
+                color: #dc3545;
+                font-size: 10px;
+                text-align: center;
+                margin-top: 5px;
+              }
+              .photo-container {
+                text-align: center;
+                margin: 20px auto;
+                max-width: 400px;
+              }
+              .photo {
+                width: 100%;
+                height: auto;
+                border-radius: 8px;
+              }
+              .details {
+                display: flex;
+                justify-content: space-around;
+                margin: 20px;
+                font-size: 24px;
+                font-weight: bold;
+              }
+              .missing-since {
+                background: black;
+                color: white;
+                text-align: center;
+                padding: 15px;
+                font-size: 24px;
+                font-weight: bold;
+                margin: 20px 0;
+              }
+              .contact {
+                background: #dc3545;
+                color: white;
+                text-align: center;
+                padding: 20px;
+                margin-top: 20px;
+              }
+              .please-help {
+                font-size: 36px;
+                margin-bottom: 10px;
+              }
+              .phone {
+                font-size: 48px;
+                font-weight: bold;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <div class="black-bar"></div>
+              <h1 class="missing-text">MISSING</h1>
+              <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=http://localhost:5173/listing" class="qr-code" />
+              <div class="qr-text">If any info found, scan this<br/>QR code to report</div>
+            </div>
+
+            <div class="photo-container">
+              ${person.recent_photo ? 
+                `<img src="${person.recent_photo.startsWith('http') 
+                  ? person.recent_photo 
+                  : `https://6a84-106-193-251-230.ngrok-free.app${person.recent_photo}`}" 
+                  class="photo" />`
+                : '<div style="width: 100%; height: 300px; background: #eee; display: flex; align-items: center; justify-content: center;">No Photo Available</div>'
+              }
+            </div>
+
+            <h2 style="text-align: center; font-size: 48px; margin: 20px 0; color: #dc3545;">
+              ${person.name}
+            </h2>
+
+            <div class="details">
+              <div>Age: ${person.age_when_missing}</div>
+              <div>Height: 5'10"</div>
+              <div>Weight: 160 lbs</div>
+            </div>
+
+            <div class="missing-since">
+              MISSING SINCE ${formatDate(person.last_seen_date)}
+            </div>
+
+            <div class="contact">
+              <div class="please-help">Please Help</div>
+              <div class="phone">CALL: ${person.emergency_contact_phone}</div>
+            </div>
+          </body>
+        </html>
+      `;
+
+      // Generate PDF file
+      const { uri: pdfUri } = await Print.printToFileAsync({
+        html: htmlContent,
+        base64: false
+      });
+
+      // Create form data
+      const formData = new FormData();
+      formData.append('pdf_file', {
+        uri: pdfUri,
+        name: 'poster.pdf',
+        type: 'application/pdf'
+      } as any);
+      formData.append('person_name', person.name);
+      
+      // Add the image URL to the form data
+      if (person.recent_photo) {
+        const imageUrl = person.recent_photo.startsWith('http') 
+          ? person.recent_photo 
+          : `https://6a84-106-193-251-230.ngrok-free.app${person.recent_photo}`;
+        formData.append('image_url', imageUrl);
+      }
+
+      // Upload to API
+      const response = await fetch('https://6a84-106-193-251-230.ngrok-free.app/api/missing-persons/missing-persons/convert-and-post/', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${tokens?.access}`,
+          'Accept': 'application/json',
+          'Content-Type': 'multipart/form-data',
+          'ngrok-skip-browser-warning': 'true'
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to share on Instagram');
+      }
+
+      Alert.alert(
+        'Success',
+        'Poster has been shared on Instagram successfully!'
+      );
+
+      // Clean up the temporary PDF file
+      await FileSystem.deleteAsync(pdfUri);
+
+    } catch (error) {
+      console.error('Error sharing poster:', error);
+      Alert.alert(
+        'Error',
+        'Failed to share the poster. Please try again.'
+      );
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      <LinearGradient
+    <LinearGradient
         colors={["#1A365D", "#2B6CB0"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -442,25 +829,36 @@ const ProfileScreen = () => {
       >
         <Animated.View style={[styles.header, headerAnimatedStyle]}>
           <View style={styles.profileImageContainer}>
-            <Image source={{ uri: "https://randomuser.me/api/portraits/men/8.jpg" }} style={styles.profileImage} />
+            <Image
+              source={{ 
+                uri: profile?.profile_picture 
+                  ? `https://6a84-106-193-251-230.ngrok-free.app${profile.profile_picture}`
+                  : "https://randomuser.me/api/portraits/men/8.jpg" 
+              }} 
+              style={styles.profileImage} 
+            />
             <View style={styles.onlineIndicator} />
-          </View>
+            </View>
 
           <View style={styles.headerText}>
-            <Text style={styles.name}>John Doe</Text>
+            <Text style={styles.name}>
+              {profile ? `${profile.first_name} ${profile.last_name}` : 'Loading...'}
+                </Text>
             <View style={styles.locationRow}>
               <Ionicons name="location" size={16} color="rgba(255,255,255,0.8)" />
-              <Text style={styles.location}>New York, USA</Text>
+              <Text style={styles.location}>
+                {profile ? `${profile.city}, ${profile.state}` : 'Loading...'}
+              </Text>
             </View>
             <View style={styles.statusBadge}>
-              <Text style={styles.statusBadgeText}>Safe</Text>
+              <Text style={styles.statusBadgeText}>{profile?.role || 'Loading...'}</Text>
             </View>
           </View>
 
           <TouchableOpacity style={styles.settingsButton}>
             <Ionicons name="settings-outline" size={24} color="#fff" />
           </TouchableOpacity>
-        </Animated.View>
+              </Animated.View>
       </LinearGradient>
 
       <View style={styles.tabsContainer}>
@@ -470,7 +868,7 @@ const ProfileScreen = () => {
         >
           <Ionicons name="people" size={20} color={activeTab === "family" ? "#2B6CB0" : "#64748B"} />
           <Text style={[styles.tabText, activeTab === "family" && styles.activeTabText]}>Family</Text>
-        </TouchableOpacity>
+            </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.tab, activeTab === "alerts" && styles.activeTab]}
@@ -486,8 +884,8 @@ const ProfileScreen = () => {
         >
           <Ionicons name="map" size={20} color={activeTab === "map" ? "#2B6CB0" : "#64748B"} />
           <Text style={[styles.tabText, activeTab === "map" && styles.activeTabText]}>Map</Text>
-        </TouchableOpacity>
-      </View>
+            </TouchableOpacity>
+          </View>
 
       <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         {/* Emergency Contacts Section */}
@@ -499,8 +897,8 @@ const ProfileScreen = () => {
             </View>
             <TouchableOpacity style={styles.sectionAction}>
               <Text style={styles.sectionActionText}>Edit</Text>
-            </TouchableOpacity>
-          </View>
+              </TouchableOpacity>
+            </View>
 
           <View style={styles.emergencyContactsContainer}>
             {emergencyContacts.map((contact, index) => (
@@ -515,21 +913,27 @@ const ProfileScreen = () => {
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleContainer}>
                 <Ionicons name="people" size={20} color="#2B6CB0" />
-                <Text style={styles.sectionTitle}>Virtual Family</Text>
+                <Text style={styles.sectionTitle}>Virtual Family ({familyMembers.length})</Text>
               </View>
               <TouchableOpacity style={styles.sectionAction}>
                 <Text style={styles.sectionActionText}>View All</Text>
               </TouchableOpacity>
             </View>
 
-            <FlatList
-              horizontal
-              data={virtualFamilyData}
-              keyExtractor={(item) => item.id}
-              renderItem={renderFamilyMember}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.familyList}
-            />
+            {familyMembers.length > 0 ? (
+          <FlatList
+                horizontal
+                data={familyMembers}
+                keyExtractor={(item) => item.id.toString()}
+            renderItem={renderFamilyMember}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.familyList}
+              />
+            ) : (
+              <View style={[styles.familyCard, { justifyContent: 'center', alignItems: 'center' }]}>
+                <Text style={{ color: '#64748B' }}>No family members found</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -539,178 +943,184 @@ const ProfileScreen = () => {
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleContainer}>
                 <Ionicons name="newspaper" size={20} color="#2B6CB0" />
-                <Text style={styles.sectionTitle}>Recent Reports</Text>
-              </View>
-              <TouchableOpacity style={styles.sectionAction}>
-                <Text style={styles.sectionActionText}>View All</Text>
-              </TouchableOpacity>
+                <Text style={styles.sectionTitle}>Missing Person Reports ({missingPersons.length})</Text>
+            </View>
             </View>
 
-            <View style={styles.reportsContainer}>
-              {recentReports.map((report, index) => (
-                <ReportItem key={report.id} report={report} index={index} />
+            <ScrollView 
+              style={styles.missingPersonsScrollView}
+              showsVerticalScrollIndicator={false}
+            >
+              {missingPersons.map((person) => (
+                <View key={person.id} style={styles.alertCard}>
+                  <View style={styles.alertHeader}>
+                    <View style={styles.alertTitleContainer}>
+                      <Ionicons 
+                        name={person.status === 'FOUND' ? "checkmark-circle" : "warning"} 
+                        size={22} 
+                        color={person.status === 'FOUND' ? "#28a745" : "#856404"} 
+                      />
+                      <Text style={[
+                        styles.alertTitle,
+                        { color: person.status === 'FOUND' ? "#28a745" : "#856404" }
+                      ]}>
+                        Case #{person.case_number}
+            </Text>
+                    </View>
+                    <Text style={styles.alertTime}>
+                      Last seen: {formatDate(person.last_seen_date)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.alertContent}>
+                    {person.recent_photo ? (
+                      <Image 
+                        source={{ uri: person.recent_photo }} 
+                        style={styles.missingPersonImage}
+                        resizeMode="cover" 
+                      />
+                    ) : (
+                      <View style={styles.noPhotoPlaceholder}>
+                        <Ionicons name="person" size={40} color="#ccc" />
+                      </View>
+                    )}
+
+                    <View style={styles.alertDetails}>
+                      <Text style={styles.alertName}>
+                        {person.name}, {person.age_when_missing}
+                      </Text>
+                      <Text style={styles.alertLocation}>
+                        <Ionicons name="location" size={14} color="#856404" /> {person.last_seen_location}
+                      </Text>
+                      <View style={[
+                        styles.statusBadge,
+                        { backgroundColor: person.status === 'FOUND' ? '#d4edda' : '#fff3cd' }
+                      ]}>
+                        <Text style={[
+                          styles.statusText,
+                          { color: person.status === 'FOUND' ? "#28a745" : "#856404" }
+                        ]}>
+                          {person.status}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.alertActions}>
+                    <TouchableOpacity
+                      style={styles.alertAction}
+                      onPress={() => handleCallEmergencyContact(person.emergency_contact_phone)}
+                    >
+                <LinearGradient
+                        colors={["#ffc107", "#e0a800"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.alertActionButton}
+                      >
+                        <Ionicons name="call" size={16} color="#fff" />
+                        <Text style={styles.alertActionText}>Call</Text>
+                </LinearGradient>
+            </TouchableOpacity>
+
+                    <TouchableOpacity 
+                      style={styles.alertAction}
+                      onPress={() => createAndSharePoster(person)}
+                    >
+                      <LinearGradient
+                        colors={["#17a2b8", "#138496"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.alertActionButton}
+                      >
+                        <Ionicons name="share-social" size={16} color="#fff" />
+                        <Text style={styles.alertActionText}>Share</Text>
+    </LinearGradient>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.alertAction}>
+                      <LinearGradient
+                        colors={["#28a745", "#218838"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.alertActionButton}
+                      >
+                        <Ionicons name="information-circle" size={16} color="#fff" />
+                        <Text style={styles.alertActionText}>Details</Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               ))}
-            </View>
+            </ScrollView>
           </View>
         )}
 
-        {/* Missing Person Alert */}
-        {activeTab === "alerts" && (
-          <Animated.View style={[styles.alertCardContainer, alertAnimatedStyle]}>
-            <LinearGradient
-              colors={["#fff3cd", "#fff8e6"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.alertCard}
-            >
-              <View style={styles.alertHeader}>
-                <View style={styles.alertTitleContainer}>
-                  <Ionicons name="warning" size={22} color="#856404" />
-                  <Text style={styles.alertTitle}>Missing Person Alert</Text>
-                </View>
-                <Text style={styles.alertTime}>{missingPersonAlert.lastSeen}</Text>
-              </View>
-
-              <View style={styles.alertContent}>
-                <Image source={{ uri: missingPersonAlert.image }} style={styles.missingPersonImage} />
-
-                <View style={styles.alertDetails}>
-                  <Text style={styles.alertName}>
-                    {missingPersonAlert.name}, {missingPersonAlert.age}
-                  </Text>
-                  <Text style={styles.alertLocation}>
-                    <Ionicons name="location" size={14} color="#856404" /> {missingPersonAlert.location}
-                  </Text>
-                  <Text style={styles.alertDescription}>{missingPersonAlert.details}</Text>
-                </View>
-              </View>
-
-              <View style={styles.alertActions}>
-                <TouchableOpacity
-                  style={styles.alertAction}
-                  onPress={() => handleCallEmergencyContact(missingPersonAlert.contact)}
-                >
-                  <LinearGradient
-                    colors={["#ffc107", "#e0a800"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.alertActionButton}
-                  >
-                    <Ionicons name="call" size={16} color="#fff" />
-                    <Text style={styles.alertActionText}>Call</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.alertAction}>
-                  <LinearGradient
-                    colors={["#17a2b8", "#138496"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.alertActionButton}
-                  >
-                    <Ionicons name="share-social" size={16} color="#fff" />
-                    <Text style={styles.alertActionText}>Share</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.alertAction}>
-                  <LinearGradient
-                    colors={["#28a745", "#218838"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.alertActionButton}
-                  >
-                    <Ionicons name="information-circle" size={16} color="#fff" />
-                    <Text style={styles.alertActionText}>Details</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              </View>
-            </LinearGradient>
-          </Animated.View>
-        )}
-
         {/* Map Section */}
-        {activeTab === "map" && mapRegion && (
-          <Animated.View style={[styles.mapContainer, mapAnimatedStyle]}>
-            <View style={styles.mapHeader}>
-              <View style={styles.mapTitleContainer}>
-                <Ionicons name="location" size={20} color="#2B6CB0" />
-                <Text style={styles.mapTitle}>Your Current Location</Text>
-              </View>
-              <Text style={styles.mapUpdated}>Updated 2 min ago</Text>
-            </View>
+        {activeTab === "map" && (
+          <View style={styles.mapContainer}>
+            <MapView 
+              style={styles.map}
+              initialRegion={{
+                latitude: profile?.latitude ? parseFloat(profile.latitude) : 40.712800,
+                longitude: profile?.longitude ? parseFloat(profile.longitude) : -74.006000,
+                latitudeDelta: 0.0922,
+                longitudeDelta: 0.0421,
+              }}
+              showsUserLocation={true}
+              showsMyLocationButton={true}
+            >
+              {/* User's own marker */}
+              {profile?.latitude && profile?.longitude && (
+                <Marker
+                  coordinate={{
+                    latitude: parseFloat(profile.latitude),
+                    longitude: parseFloat(profile.longitude)
+                  }}
+                  title={`${profile.first_name}'s Location`}
+                  description={`${profile.city}, ${profile.state}`}
+                >
+                  <View style={styles.familyMarkerContainer}>
+                    <Image 
+                      source={{ 
+                        uri: profile.profile_picture 
+                          ? `https://6a84-106-193-251-230.ngrok-free.app${profile.profile_picture}`
+                          : "https://randomuser.me/api/portraits/men/8.jpg" 
+                      }}
+                      style={[styles.familyMarkerImage, { borderColor: '#2B6CB0' }]} 
+                    />
+                    <View style={[styles.familyMarkerStatus, { backgroundColor: '#28a745' }]} />
+                  </View>
+                </Marker>
+              )}
 
-            <View style={styles.mapWrapper}>
-              <MapView 
-                style={styles.map} 
-                region={mapRegion}
-                showsUserLocation={true}
-                showsMyLocationButton={true}
-                loadingEnabled={true}
-              >
-                {location && (
-                  <Marker
-                    coordinate={{
-                      latitude: mapRegion.latitude,
-                      longitude: mapRegion.longitude,
-                    }}
-                    title="Your Location"
-                  >
-                    <View style={styles.markerContainer}>
-                      <View style={styles.markerInner}>
-                        <View style={styles.markerDot} />
-                      </View>
-                      <View style={styles.markerRipple} />
-                    </View>
-                  </Marker>
-                )}
-
-                {virtualFamilyData.map((member) => (
+              {/* Family members markers */}
+              {familyMembers.map((member) => (
+                member.user.latitude && member.user.longitude ? (
                   <Marker
                     key={member.id}
                     coordinate={{
-                      latitude: member.location.latitude,
-                      longitude: member.location.longitude,
+                      latitude: parseFloat(member.user.latitude),
+                      longitude: parseFloat(member.user.longitude)
                     }}
-                    title={member.name}
-                    description={`Status: ${member.status}`}
+                    title={`${member.user.first_name} ${member.user.last_name}`}
+                    description={`${member.user.city}, ${member.user.state}`}
                   >
                     <View style={styles.familyMarkerContainer}>
-                      <Image source={{ uri: member.avatar }} style={styles.familyMarkerImage} />
-                      <View style={[styles.familyMarkerStatus, { backgroundColor: getStatusColor(member.status) }]} />
+                      <Image 
+                        source={{ 
+                          uri: member.user.profile_picture 
+                            ? `https://6a84-106-193-251-230.ngrok-free.app${member.user.profile_picture}`
+                            : "https://randomuser.me/api/portraits/men/1.jpg" 
+                        }}
+                        style={styles.familyMarkerImage} 
+                      />
+                      <View style={[styles.familyMarkerStatus, { backgroundColor: getStatusColor('Safe') }]} />
                     </View>
                   </Marker>
-                ))}
-              </MapView>
-
-              <View style={styles.mapOverlay}>
-                <TouchableOpacity style={styles.mapActionButton}>
-                  <Ionicons name="navigate" size={24} color="#fff" />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.mapActionButton}>
-                  <Ionicons name="refresh" size={24} color="#fff" />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.mapFooter}>
-              <View style={styles.mapLegendItem}>
-                <View style={[styles.mapLegendDot, { backgroundColor: "#28a745" }]} />
-                <Text style={styles.mapLegendText}>Safe</Text>
-              </View>
-
-              <View style={styles.mapLegendItem}>
-                <View style={[styles.mapLegendDot, { backgroundColor: "#dc3545" }]} />
-                <Text style={styles.mapLegendText}>At Risk</Text>
-              </View>
-
-              <View style={styles.mapLegendItem}>
-                <View style={[styles.mapLegendDot, { backgroundColor: "#007bff" }]} />
-                <Text style={styles.mapLegendText}>You</Text>
-              </View>
-            </View>
-          </Animated.View>
+                ) : null
+              ))}
+            </MapView>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -1250,18 +1660,16 @@ const styles = StyleSheet.create({
     color: "#4A5568",
     lineHeight: 20,
   },
-  alertCardContainer: {
-    borderRadius: 12,
-    overflow: "hidden",
-    marginBottom: 25,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 3,
-  },
   alertCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
     padding: 15,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   alertHeader: {
     flexDirection: "row",
@@ -1308,12 +1716,6 @@ const styles = StyleSheet.create({
     color: "#856404",
     marginBottom: 5,
   },
-  alertDescription: {
-    fontSize: 14,
-    color: "#856404",
-    opacity: 0.9,
-    lineHeight: 20,
-  },
   alertActions: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1337,15 +1739,15 @@ const styles = StyleSheet.create({
     marginLeft: 5,
   },
   mapContainer: {
+    height: 400,
+    width: '100%',
     borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 3,
-    marginBottom: 25,
+    overflow: 'hidden',
+    marginBottom: 20,
+  },
+  map: {
+    width: '100%',
+    height: '100%',
   },
   mapHeader: {
     flexDirection: "row",
@@ -1372,9 +1774,6 @@ const styles = StyleSheet.create({
   mapWrapper: {
     position: "relative",
     height: 300,
-  },
-  map: {
-    ...StyleSheet.absoluteFillObject,
   },
   mapOverlay: {
     position: "absolute",
@@ -1526,6 +1925,30 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  missingPersonsScrollView: {
+    maxHeight: height * 0.7, // 70% of screen height
+  },
+  noPhotoPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 10,
+    backgroundColor: '#f8f9fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  missingPersonStatusBadge: {
+    marginTop: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#fff3cd',
+    alignSelf: 'flex-start',
   },
 })
 

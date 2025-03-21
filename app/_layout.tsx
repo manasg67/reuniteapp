@@ -49,6 +49,7 @@ export default function RootLayout() {
           <Stack.Screen name="sightdetails" options={{ headerShown: false }} />
           <Stack.Screen name="sightreport" options={{ headerShown: false }} />
           <Stack.Screen name="volunter" options={{ headerShown: false }} />
+          <Stack.Screen name="nearbysightings" options={{ headerShown: false }} />
         </Stack>
         <StatusBar style="auto" />
       </ThemeProvider>

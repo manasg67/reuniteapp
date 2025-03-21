@@ -72,34 +72,48 @@ const LoginScreen: React.FC = () => {
         return;
       }
 
-      console.log("Attempting login with:", { username, password });
+      console.log("Attempting login with:", { username });
 
-      const response = await fetch('http://192.168.0.102:8000/api/accounts/login/', {
+      const response = await fetch('https://6a84-106-193-251-230.ngrok-free.app/api/accounts/login/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
         },
         body: JSON.stringify({ username, password }),
       });
 
-      const data = await response.json();
-      console.log("API Response:", data); // Debug: Log the API response
+      const responseText = await response.text();
+      console.log('Raw response:', responseText);
+      
+      const data = JSON.parse(responseText);
+      console.log("API Response:", data);
 
       if (!response.ok) {
         throw new Error(data.message || 'Login failed');
       }
 
-      // Ensure the data structure matches what login expects
-      login(data.user, data.tokens);
-      console.log("Auth Store Updated, isAuthenticated:", useAuthStore.getState().isAuthenticated);
+      if (!data.user || !data.tokens) {
+        throw new Error('Invalid response format');
+      }
 
-      // Add a slight delay to ensure state propagation
-      setTimeout(() => {
-        router.replace("/(tabs)/home");
-        console.log("Navigation triggered to home");
-      }, 100);
+      // Store the tokens first
+      await login(data.user, data.tokens);
+      
+      console.log("Auth state after login:", {
+        isAuthenticated: useAuthStore.getState().isAuthenticated,
+        hasTokens: !!useAuthStore.getState().tokens,
+        user: useAuthStore.getState().user
+      });
+
+      // Wait a moment for state to settle
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      // Navigate after state is updated
+      router.replace("/(tabs)/home");
 
     } catch (error) {
       console.error("Login Error:", error);

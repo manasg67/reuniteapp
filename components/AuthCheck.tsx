@@ -10,14 +10,29 @@ export const AuthCheck: React.FC = () => {
     let isMounted = true;
 
     const checkAuth = async () => {
+      console.log('AuthCheck - Current state:', {
+        hasTokens: !!tokens,
+        isAuthenticated,
+        tokenValid: tokens?.access ? isTokenValid(tokens.access) : false
+      });
+
+      // Check if we need to logout
       const shouldLogout = !isAuthenticated || (tokens?.access && !isTokenValid(tokens.access));
       
       if (shouldLogout && isMounted) {
+        console.log('AuthCheck - Logging out due to:', {
+          noAuth: !isAuthenticated,
+          invalidToken: tokens?.access ? !isTokenValid(tokens.access) : false
+        });
+        
         await logout();
-        // Delay navigation to ensure root layout is mounted
-        setTimeout(() => {
+        
+        // Check current route to avoid unnecessary navigation
+        const currentRoute = router.canGoBack() ? 'unknown' : 'login';
+        if (currentRoute !== 'login') {
+          console.log('AuthCheck - Navigating to login');
           router.replace('/login');
-        }, 0);
+        }
       }
     };
 
