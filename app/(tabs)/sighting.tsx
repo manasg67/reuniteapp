@@ -1,2 +1,2 @@
-import SightingScreen from '../../pages/Sightingpage'
+import SightingScreen from '../../pages/SightingsListScreen'
 export default SightingScreen

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import {
   View,
   Text,
@@ -420,11 +420,20 @@ const SightingItem = ({ sighting, onPress, onSwipeAction }: { sighting: any, onP
           </View>
 
           <View style={styles.missingPersonContainer}>
-            <Image source={{ uri: sighting.missingPerson.thumbnail }} style={styles.thumbnail} />
-            <View>
-              <Text style={styles.missingPersonLabel}>Missing Person</Text>
-              <Text style={styles.missingPersonName}>{sighting.missingPerson.name}</Text>
-            </View>
+            {sighting.missingPerson ? (
+              <>
+                <Image source={{ uri: sighting.missingPerson.thumbnail }} style={styles.thumbnail} />
+                <View>
+                  <Text style={styles.missingPersonLabel}>Missing Person</Text>
+                  <Text style={styles.missingPersonName}>{sighting.missingPerson.name}</Text>
+                </View>
+              </>
+            ) : (
+              <View>
+                <Text style={styles.missingPersonLabel}>Missing Person</Text>
+                <Text style={styles.missingPersonName}>Unknown</Text>
+              </View>
+            )}
           </View>
         </TouchableOpacity>
       </Animated.View>
@@ -678,7 +687,7 @@ export default function SightingsListScreen() {
         queryParams.append('ordering', filters.ordering);
       }
 
-      const url = `https://6a84-106-193-251-230.ngrok-free.app/api/sightings/sightings/?${queryParams.toString()}`;
+      const url = `https://15e1-150-107-18-153.ngrok-free.app/api/sightings/sightings/?${queryParams.toString()}`;
       
       const response = await fetch(url, {
         headers: {
@@ -722,7 +731,7 @@ export default function SightingsListScreen() {
   const handleSwipeAction = async (id: number, action: string) => {
     if (action === "verify") {
       try {
-        const response = await fetch(`https://6a84-106-193-251-230.ngrok-free.app/api/sightings/sightings/${id}/verify/`, {
+        const response = await fetch(`https://15e1-150-107-18-153.ngrok-free.app/api/sightings/sightings/${id}/verify/`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${tokens?.access}`,
@@ -1221,7 +1230,7 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: 16,
-    bottom: 16,
+    bottom: 90,
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -1237,7 +1246,7 @@ const styles = StyleSheet.create({
   mapButton: {
     position: "absolute",
     left: 16,
-    bottom: 16,
+    bottom: 90,
     width: 56,
     height: 56,
     borderRadius: 28,

@@ -92,6 +92,7 @@ const Step = ({ number, title, isActive, isCompleted }: { number: number, title:
 // Main component
 export default function SightingReportScreen() {
   const [currentStep, setCurrentStep] = useState(1)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState<FormData>({
     missingPerson: null,
     location: "",
@@ -129,7 +130,7 @@ export default function SightingReportScreen() {
   useEffect(() => {
     const fetchMissingPersons = async () => {
       try {
-        const response = await fetch('https://6a84-106-193-251-230.ngrok-free.app/api/missing-persons/missing-persons/list_all/', {
+        const response = await fetch('https://15e1-150-107-18-153.ngrok-free.app/api/missing-persons/missing-persons/list_all/', {
           headers: {
             'Authorization': `Bearer ${tokens?.access}`,
             'Accept': 'application/json',
@@ -274,6 +275,7 @@ export default function SightingReportScreen() {
   // Handle form submission
   const handleSubmit = async () => {
     try {
+      setIsSubmitting(true);
       const formDataToSend = new FormData();
       
       // Add missing person ID if selected
@@ -337,7 +339,7 @@ export default function SightingReportScreen() {
 
       console.log('Submitting form data:', Object.fromEntries(formDataToSend));
 
-      const response = await fetch('https://6a84-106-193-251-230.ngrok-free.app/api/sightings/sightings/', {
+      const response = await fetch('https://15e1-150-107-18-153.ngrok-free.app/api/sightings/sightings/', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${tokens?.access}`,
@@ -366,10 +368,10 @@ export default function SightingReportScreen() {
       Alert.alert(
         'Error',
         error instanceof Error ? error.message : 'Failed to submit sighting report. Please check your internet connection and try again.',
-        [
-          { text: 'OK' }
-        ]
+        [{ text: 'OK' }]
       );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -409,24 +411,64 @@ export default function SightingReportScreen() {
     })();
   }, [formData.useCurrentLocation]);
 
+  // Add SkeletonLoader component
+  const SkeletonLoader = () => (
+    <View style={styles.skeletonContainer}>
+      <View style={styles.skeletonHeader}>
+        <View style={styles.skeletonTitle} />
+        <View style={styles.skeletonSubtitle} />
+      </View>
+      
+      <View style={styles.skeletonContent}>
+        <View style={styles.skeletonRow}>
+          <View style={styles.skeletonLabel} />
+          <View style={styles.skeletonValue} />
+        </View>
+        <View style={styles.skeletonRow}>
+          <View style={styles.skeletonLabel} />
+          <View style={styles.skeletonValue} />
+        </View>
+        <View style={styles.skeletonRow}>
+          <View style={styles.skeletonLabel} />
+          <View style={styles.skeletonValue} />
+        </View>
+        <View style={styles.skeletonRow}>
+          <View style={styles.skeletonLabel} />
+          <View style={styles.skeletonValue} />
+        </View>
+      </View>
+
+      <View style={styles.skeletonFooter}>
+        <View style={styles.skeletonButton} />
+        <View style={styles.skeletonButton} />
+      </View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.keyboardAvoidingView}>
-        <View style={styles.progressContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stepsContainer}>
-            <Step number={1} title="Missing Person" isActive={currentStep === 1} isCompleted={currentStep > 1} />
-            <View style={styles.stepDivider} />
-            <Step number={2} title="Location" isActive={currentStep === 2} isCompleted={currentStep > 2} />
-            <View style={styles.stepDivider} />
-            <Step number={3} title="Evidence" isActive={currentStep === 3} isCompleted={currentStep > 3} />
-            <View style={styles.stepDivider} />
-            <Step number={4} title="Details" isActive={currentStep === 4} isCompleted={currentStep > 4} />
-            <View style={styles.stepDivider} />
-            <Step number={5} title="Reporter Info" isActive={currentStep === 5} isCompleted={currentStep > 5} />
-            <View style={styles.stepDivider} />
-            <Step number={6} title="Review" isActive={currentStep === 6} isCompleted={currentStep > 6} />
-          </ScrollView>
-        </View>
+        {isSubmitting ? (
+          <SkeletonLoader />
+        ) : (
+          <>
+            <View style={styles.progressContainer}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stepsContainer}>
+                <Step number={1} title="Missing Person" isActive={currentStep === 1} isCompleted={currentStep > 1} />
+                <View style={styles.stepDivider} />
+                <Step number={2} title="Location" isActive={currentStep === 2} isCompleted={currentStep > 2} />
+                <View style={styles.stepDivider} />
+                <Step number={3} title="Evidence" isActive={currentStep === 3} isCompleted={currentStep > 3} />
+                <View style={styles.stepDivider} />
+                <Step number={4} title="Details" isActive={currentStep === 4} isCompleted={currentStep > 4} />
+                <View style={styles.stepDivider} />
+                <Step number={5} title="Reporter Info" isActive={currentStep === 5} isCompleted={currentStep > 5} />
+                <View style={styles.stepDivider} />
+                <Step number={6} title="Review" isActive={currentStep === 6} isCompleted={currentStep > 6} />
+              </ScrollView>
+            </View>
+          </>
+        )}
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <Animated.View style={[styles.formContainer, { transform: [{ translateX: slideAnim }] }]}>
@@ -1730,43 +1772,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 5,
   },
-  disabledText: {
-    color: "#9CA3AF",
-  },
-  checkboxDisabled: {
-    backgroundColor: "#F3F4F6",
-    borderColor: "#F3F4F6",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#E5E7EB",
-    marginVertical: 20,
-  },
-  legalText: {
-    fontSize: 14,
-    color: "#4B5563",
-    marginBottom: 10,
-  },
-  legalList: {
-    marginLeft: 20,
-  },
-  legalItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 8,
-  },
-  legalBullet: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#4B5563",
-    marginTop: 6,
-    marginRight: 8,
-  },
-  legalItemText: {
-    fontSize: 14,
-    color: "#4B5563",
-  },
   submitButton: {
     backgroundColor: "#48BB78",
     paddingVertical: 15,
@@ -1862,185 +1867,98 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "500",
   },
-  reviewSection: {
+  skeletonContainer: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+    padding: 20,
+  },
+  skeletonHeader: {
+    marginBottom: 30,
+  },
+  skeletonTitle: {
+    height: 24,
+    width: '60%',
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  skeletonSubtitle: {
+    height: 16,
+    width: '40%',
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
+  },
+  skeletonContent: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 20,
     marginBottom: 20,
   },
-  reviewSectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
+  skeletonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
   },
-  reviewSectionTitle: {
-    fontSize: 18,
-    fontWeight: "500",
-    color: "#1A365D",
-  },
-  editButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#E0F2FE",
-    borderRadius: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  editButtonText: {
-    fontSize: 14,
-    color: "#2B6CB0",
-    marginLeft: 5,
-  },
-  reviewContent: {
-    padding: 15,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 6,
-  },
-  reviewEmptyText: {
-    fontSize: 16,
-    color: "#6B7280",
-    fontStyle: "italic",
-  },
-  reviewPersonInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  reviewPersonPhoto: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: 15,
-  },
-  reviewPersonName: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#1A365D",
-  },
-  reviewPersonId: {
-    fontSize: 14,
-    color: "#6B7280",
-  },
-  reviewDateTime: {
-    marginTop: 10,
-  },
-  reviewDateTimeLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#1A365D",
-  },
-  reviewDateTimeValue: {
-    fontSize: 14,
-    color: "#4B5563",
-  },
-  reviewLocationInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  reviewLocationIcon: {
-    marginRight: 10,
-  },
-  reviewLocationText: {
-    fontSize: 16,
-    color: "#4B5563",
-  },
-  reviewPhotosCount: {
-    fontSize: 14,
-    color: "#4B5563",
-    marginBottom: 5,
-  },
-  reviewPhotosContainer: {
-    marginTop: 5,
-  },
-  reviewPhotoThumbnail: {
-    width: 80,
-    height: 80,
-    borderRadius: 6,
-    marginRight: 10,
-  },
-  reviewDescription: {
-    fontSize: 16,
-    color: "#4B5563",
-    marginBottom: 10,
-  },
-  reviewDetail: {
-    marginBottom: 8,
-  },
-  reviewDetailLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#1A365D",
-  },
-  reviewDetailText: {
-    fontSize: 14,
-    color: "#4B5563",
-  },
-  reviewBehaviorTags: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  reviewBehaviorTag: {
-    backgroundColor: "#E0F2FE",
-    borderRadius: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  reviewBehaviorTagText: {
-    fontSize: 14,
-    color: "#2B6CB0",
-  },
-  reviewConfidenceBar: {
-    height: 8,
-    backgroundColor: "#E5E7EB",
+  skeletonLabel: {
+    height: 16,
+    width: '30%',
+    backgroundColor: '#E5E7EB',
     borderRadius: 4,
-    overflow: "hidden",
   },
-  reviewConfidenceFill: {
-    height: "100%",
-    backgroundColor: "#2B6CB0",
+  skeletonValue: {
+    height: 16,
+    width: '60%',
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
   },
-  reviewConfidenceValue: {
+  skeletonFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+  },
+  skeletonButton: {
+    height: 44,
+    width: '45%',
+    backgroundColor: '#E5E7EB',
+    borderRadius: 6,
+  },
+  disabledText: {
+    color: "#9CA3AF",
+  },
+  checkboxDisabled: {
+    backgroundColor: "#F3F4F6",
+    borderColor: "#F3F4F6",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#E5E7EB",
+    marginVertical: 20,
+  },
+  legalText: {
     fontSize: 14,
     color: "#4B5563",
-    marginTop: 5,
+    marginBottom: 10,
   },
-  reviewReporterInfo: {
+  legalList: {
+    marginLeft: 20,
+  },
+  legalItem: {
     flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 5,
+    alignItems: "flex-start",
+    marginBottom: 8,
   },
-  reviewReporterIcon: {
+  legalBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#4B5563",
+    marginTop: 6,
     marginRight: 8,
   },
-  reviewReporterName: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#1A365D",
-  },
-  reviewReporterContact: {
+  legalItemText: {
     fontSize: 14,
     color: "#4B5563",
-  },
-  reviewFollowUp: {
-    fontSize: 14,
-    color: "#4B5563",
-  },
-  emergencyFlag: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  emergencyText: {
-    fontSize: 14,
-    color: "#F56565",
-    marginLeft: 5,
-  },
-  currentLocationFlag: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  currentLocationText: {
-    fontSize: 14,
-    color: "#2B6CB0",
-    marginLeft: 5,
   },
   selectedDirectionButton: {
     backgroundColor: "#2B6CB0",

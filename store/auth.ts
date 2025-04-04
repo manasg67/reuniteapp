@@ -22,8 +22,17 @@ const useAuthStore = create<AuthState>()(
         console.log('New state after setTokens:', get());
       },
 
-      login: (user: User, tokens: Tokens) => {
+      login: async (user: User, tokens: Tokens) => {
         console.log('Login called with:', { user, tokens });
+        
+        // Store tokens in AsyncStorage directly
+        try {
+          await AsyncStorage.setItem('tokens', JSON.stringify(tokens));
+          console.log('Tokens stored in AsyncStorage');
+        } catch (error) {
+          console.error('Error storing tokens in AsyncStorage:', error);
+        }
+        
         set({
           user,
           tokens,
@@ -32,8 +41,17 @@ const useAuthStore = create<AuthState>()(
         console.log('New state after login:', get());
       },
 
-      logout: () => {
+      logout: async () => {
         console.log('Logout called');
+        
+        // Clear tokens from AsyncStorage
+        try {
+          await AsyncStorage.removeItem('tokens');
+          console.log('Tokens removed from AsyncStorage');
+        } catch (error) {
+          console.error('Error removing tokens from AsyncStorage:', error);
+        }
+        
         set({
           user: null,
           tokens: null,

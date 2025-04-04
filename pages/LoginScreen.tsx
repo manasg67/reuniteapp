@@ -21,6 +21,7 @@ import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import useAuthStore from "../store/auth";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const LoginScreen: React.FC = () => {
   const [username, setUsername] = useState("");
@@ -74,7 +75,7 @@ const LoginScreen: React.FC = () => {
 
       console.log("Attempting login with:", { username });
 
-      const response = await fetch('https://6a84-106-193-251-230.ngrok-free.app/api/accounts/login/', {
+      const response = await fetch('https://15e1-150-107-18-153.ngrok-free.app/api/accounts/login/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -98,7 +99,10 @@ const LoginScreen: React.FC = () => {
         throw new Error('Invalid response format');
       }
 
-      // Store the tokens first
+      // Store the tokens in AsyncStorage directly
+      await AsyncStorage.setItem('tokens', JSON.stringify(data.tokens));
+      
+      // Store the tokens in the auth store
       await login(data.user, data.tokens);
       
       console.log("Auth state after login:", {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
   Dimensions,
   StatusBar,
   Alert,
+  ActivityIndicator,
 } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import { Ionicons, FontAwesome5 } from "@expo/vector-icons"
@@ -403,6 +404,8 @@ const ProfileScreen = () => {
   const [activeTab, setActiveTab] = useState("family")
   const router = useRouter();
   const [missingPersons, setMissingPersons] = useState<MissingPerson[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [sharingPosterId, setSharingPosterId] = useState<number | null>(null);
 
   // Animation values
   const headerScale = useSharedValue(0.9)
@@ -420,7 +423,7 @@ const ProfileScreen = () => {
       }
 
         console.log('Fetching user profile...');
-        const response = await fetch('https://6a84-106-193-251-230.ngrok-free.app/api/accounts/users/me/', {
+        const response = await fetch('https://15e1-150-107-18-153.ngrok-free.app/api/accounts/users/me/', {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${tokens.access}`,
@@ -472,7 +475,7 @@ const ProfileScreen = () => {
           familyName: profile.families[0].name
         });
 
-        const response = await fetch(`https://6a84-106-193-251-230.ngrok-free.app/api/accounts/families/${profile.families[0].id}/members/`, {
+        const response = await fetch(`https://15e1-150-107-18-153.ngrok-free.app/api/accounts/families/${profile.families[0].id}/members/`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${tokens.access}`,
@@ -517,12 +520,23 @@ const ProfileScreen = () => {
   }, [profile, tokens]);
 
   useEffect(() => {
-    fetchMissingPersons();
+    const fetchData = async () => {
+      setIsLoading(true);
+      try {
+        await fetchMissingPersons();
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchData();
   }, []);
 
   const fetchMissingPersons = async () => {
     try {
-      const response = await fetch('https://6a84-106-193-251-230.ngrok-free.app/api/missing-persons/missing-persons/', {
+      const response = await fetch('https://15e1-150-107-18-153.ngrok-free.app/api/missing-persons/missing-persons/', {
         headers: {
           'Authorization': `Bearer ${tokens?.access}`,
           'Accept': 'application/json',
@@ -603,7 +617,7 @@ const ProfileScreen = () => {
     const status = getStatusFromRole(item.role);
     const defaultImage = "https://randomuser.me/api/portraits/men/1.jpg";
     const profilePicture = item.user.profile_picture 
-      ? `https://6a84-106-193-251-230.ngrok-free.app${item.user.profile_picture}`
+      ? `https://15e1-150-107-18-153.ngrok-free.app${item.user.profile_picture}`
       : defaultImage;
     
     return (
@@ -627,6 +641,12 @@ const ProfileScreen = () => {
 
   const createAndSharePoster = async (person: MissingPerson) => {
     try {
+      // Set the sharing poster ID to show loading state for this specific poster
+      setSharingPosterId(person.id);
+      
+      // Get the image URL - using the same format as in the missing person card
+      const imageUrl = person.recent_photo;
+      
       // Create HTML content for the poster
       const htmlContent = `
         <!DOCTYPE html>
@@ -687,6 +707,7 @@ const ProfileScreen = () => {
                 width: 100%;
                 height: auto;
                 border-radius: 8px;
+                object-fit: cover;
               }
               .details {
                 display: flex;
@@ -730,11 +751,8 @@ const ProfileScreen = () => {
             </div>
 
             <div class="photo-container">
-              ${person.recent_photo ? 
-                `<img src="${person.recent_photo.startsWith('http') 
-                  ? person.recent_photo 
-                  : `https://6a84-106-193-251-230.ngrok-free.app${person.recent_photo}`}" 
-                  class="photo" />`
+              ${imageUrl ? 
+                `<img src="${imageUrl}" class="photo" alt="${person.name}" />`
                 : '<div style="width: 100%; height: 300px; background: #eee; display: flex; align-items: center; justify-content: center;">No Photo Available</div>'
               }
             </div>
@@ -777,15 +795,12 @@ const ProfileScreen = () => {
       formData.append('person_name', person.name);
       
       // Add the image URL to the form data
-      if (person.recent_photo) {
-        const imageUrl = person.recent_photo.startsWith('http') 
-          ? person.recent_photo 
-          : `https://6a84-106-193-251-230.ngrok-free.app${person.recent_photo}`;
+      if (imageUrl) {
         formData.append('image_url', imageUrl);
       }
 
       // Upload to API
-      const response = await fetch('https://6a84-106-193-251-230.ngrok-free.app/api/missing-persons/missing-persons/convert-and-post/', {
+      const response = await fetch('https://15e1-150-107-18-153.ngrok-free.app/api/missing-persons/missing-persons/convert-and-post/', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${tokens?.access}`,
@@ -798,6 +813,58 @@ const ProfileScreen = () => {
 
       if (!response.ok) {
         throw new Error('Failed to share on Instagram');
+      }
+
+      // Get the response data which should include the URL of the shared poster
+      const responseData = await response.json();
+      const posterUrl = responseData.poster_url || responseData.url;
+
+      // Open WhatsApp with the poster URL
+      const message = `Missing Person Alert: ${person.name}%0A%0APlease help find this person. Last seen at: ${person.last_seen_location}%0A%0AContact: ${person.emergency_contact_phone}`;
+      const whatsappUrl = Platform.select({
+        ios: `whatsapp://send?text=${message}`,
+        android: `whatsapp://send?text=${message}`,
+      });
+
+      if (!whatsappUrl) {
+        throw new Error('Platform not supported');
+      }
+
+      const canOpenWhatsApp = await Linking.canOpenURL(whatsappUrl);
+      
+      if (canOpenWhatsApp) {
+        await Linking.openURL(whatsappUrl);
+      } else {
+        // If WhatsApp is not installed, show an alert with options
+        Alert.alert(
+          'WhatsApp Not Installed',
+          'Would you like to share via other apps?',
+          [
+            {
+              text: 'Share via SMS',
+              onPress: async () => {
+                const smsUrl = Platform.select({
+                  ios: `sms:&body=${message}`,
+                  android: `sms:?body=${message}`,
+                });
+                if (smsUrl) {
+                  await Linking.openURL(smsUrl);
+                }
+              }
+            },
+            {
+              text: 'Share via Email',
+              onPress: async () => {
+                const emailUrl = `mailto:?subject=Missing Person Alert&body=${message}`;
+                await Linking.openURL(emailUrl);
+              }
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            }
+          ]
+        );
       }
 
       Alert.alert(
@@ -814,315 +881,443 @@ const ProfileScreen = () => {
         'Error',
         'Failed to share the poster. Please try again.'
       );
+    } finally {
+      // Reset the sharing poster ID
+      setSharingPosterId(null);
     }
+  };
+
+  const handleWhatsAppShare = async (person: MissingPerson) => {
+    try {
+      // Create a more detailed message
+      const message = `Missing Person Alert: ${person.name}%0A%0A` +
+        `Age: ${person.age_when_missing}%0A` +
+        `Last seen: ${person.last_seen_location}%0A` +
+        `Date: ${formatDate(person.last_seen_date)}%0A%0A` +
+        `Contact: ${person.emergency_contact_phone}%0A%0A` +
+        `Please help find this person.`;
+
+      // For iOS, we need to use a different URL scheme
+      const whatsappUrl = Platform.select({
+        ios: `whatsapp://send?text=${message}`,
+        android: `whatsapp://send?text=${message}`,
+      });
+
+      if (!whatsappUrl) {
+        throw new Error('Platform not supported');
+      }
+
+      // First check if WhatsApp is installed
+      const canOpenWhatsApp = await Linking.canOpenURL(whatsappUrl);
+      
+      if (canOpenWhatsApp) {
+        // Try to open WhatsApp
+        const opened = await Linking.openURL(whatsappUrl);
+        if (!opened) {
+          throw new Error('Failed to open WhatsApp');
+        }
+      } else {
+        // If WhatsApp is not installed, show an alert with options
+        Alert.alert(
+          'WhatsApp Not Installed',
+          'Would you like to share via other apps?',
+          [
+            {
+              text: 'Share via SMS',
+              onPress: async () => {
+                const smsUrl = Platform.select({
+                  ios: `sms:&body=${message}`,
+                  android: `sms:?body=${message}`,
+                });
+                if (smsUrl) {
+                  await Linking.openURL(smsUrl);
+                }
+              }
+            },
+            {
+              text: 'Share via Email',
+              onPress: async () => {
+                const emailUrl = `mailto:?subject=Missing Person Alert&body=${message}`;
+                await Linking.openURL(emailUrl);
+              }
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel'
+            }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Error sharing:', error);
+      Alert.alert('Error', 'Failed to share. Please try again.');
+    }
+  };
+
+  // Add a skeleton loader component
+  const SkeletonLoader = () => {
+    return (
+      <View style={styles.skeletonContainer}>
+        <View style={styles.skeletonHeader}>
+          <View style={styles.skeletonProfileImage} />
+          <View style={styles.skeletonTextContainer}>
+            <View style={styles.skeletonName} />
+            <View style={styles.skeletonLocation} />
+            <View style={styles.skeletonStatus} />
+        </View>
+      </View>
+        
+        <View style={styles.skeletonTabs}>
+          <View style={styles.skeletonTab} />
+          <View style={styles.skeletonTab} />
+          <View style={styles.skeletonTab} />
+        </View>
+        
+        <View style={styles.skeletonSection}>
+          <View style={styles.skeletonSectionHeader} />
+          <View style={styles.skeletonCard}>
+            <View style={styles.skeletonCardHeader} />
+            <View style={styles.skeletonCardContent}>
+              <View style={styles.skeletonImage} />
+              <View style={styles.skeletonCardText}>
+                <View style={styles.skeletonCardTitle} />
+                <View style={styles.skeletonCardSubtitle} />
+                <View style={styles.skeletonCardStatus} />
+              </View>
+            </View>
+            <View style={styles.skeletonCardActions}>
+              <View style={styles.skeletonButton} />
+              <View style={styles.skeletonButton} />
+              <View style={styles.skeletonButton} />
+            </View>
+          </View>
+        </View>
+      </View>
+    );
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
 
+      {isLoading ? (
+        <SkeletonLoader />
+      ) : (
+        <>
     <LinearGradient
-        colors={["#1A365D", "#2B6CB0"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.headerGradient}
-      >
-        <Animated.View style={[styles.header, headerAnimatedStyle]}>
-          <View style={styles.profileImageContainer}>
+            colors={["#1A365D", "#2B6CB0"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.headerGradient}
+          >
+            <Animated.View style={[styles.header, headerAnimatedStyle]}>
+              <View style={styles.profileImageContainer}>
             <Image
-              source={{ 
-                uri: profile?.profile_picture 
-                  ? `https://6a84-106-193-251-230.ngrok-free.app${profile.profile_picture}`
-                  : "https://randomuser.me/api/portraits/men/8.jpg" 
-              }} 
-              style={styles.profileImage} 
-            />
-            <View style={styles.onlineIndicator} />
-            </View>
+                  source={{ 
+                    uri: profile?.profile_picture 
+                      ? `https://15e1-150-107-18-153.ngrok-free.app${profile.profile_picture}`
+                      : "https://randomuser.me/api/portraits/men/8.jpg" 
+                  }} 
+                  style={styles.profileImage} 
+                />
+                <View style={styles.onlineIndicator} />
+                </View>
 
-          <View style={styles.headerText}>
-            <Text style={styles.name}>
-              {profile ? `${profile.first_name} ${profile.last_name}` : 'Loading...'}
+              <View style={styles.headerText}>
+                <Text style={styles.name}>
+                  {profile ? `${profile.first_name} ${profile.last_name}` : 'Loading...'}
                 </Text>
-            <View style={styles.locationRow}>
-              <Ionicons name="location" size={16} color="rgba(255,255,255,0.8)" />
-              <Text style={styles.location}>
-                {profile ? `${profile.city}, ${profile.state}` : 'Loading...'}
-              </Text>
+                <View style={styles.locationRow}>
+                  <Ionicons name="location" size={16} color="rgba(255,255,255,0.8)" />
+                  <Text style={styles.location}>
+                    {profile ? `${profile.city}, ${profile.state}` : 'Loading...'}
+                  </Text>
             </View>
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusBadgeText}>{profile?.role || 'Loading...'}</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.settingsButton}>
-            <Ionicons name="settings-outline" size={24} color="#fff" />
-          </TouchableOpacity>
-              </Animated.View>
-      </LinearGradient>
-
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "family" && styles.activeTab]}
-          onPress={() => setActiveTab("family")}
-        >
-          <Ionicons name="people" size={20} color={activeTab === "family" ? "#2B6CB0" : "#64748B"} />
-          <Text style={[styles.tabText, activeTab === "family" && styles.activeTabText]}>Family</Text>
-            </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "alerts" && styles.activeTab]}
-          onPress={() => setActiveTab("alerts")}
-        >
-          <Ionicons name="warning" size={20} color={activeTab === "alerts" ? "#2B6CB0" : "#64748B"} />
-          <Text style={[styles.tabText, activeTab === "alerts" && styles.activeTabText]}>Alerts</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tab, activeTab === "map" && styles.activeTab]}
-          onPress={() => setActiveTab("map")}
-        >
-          <Ionicons name="map" size={20} color={activeTab === "map" ? "#2B6CB0" : "#64748B"} />
-          <Text style={[styles.tabText, activeTab === "map" && styles.activeTabText]}>Map</Text>
-            </TouchableOpacity>
-          </View>
-
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        {/* Emergency Contacts Section */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
-              <Ionicons name="alert-circle" size={20} color="#dc3545" />
-              <Text style={styles.sectionTitle}>Emergency Contacts</Text>
-            </View>
-            <TouchableOpacity style={styles.sectionAction}>
-              <Text style={styles.sectionActionText}>Edit</Text>
-              </TouchableOpacity>
-            </View>
-
-          <View style={styles.emergencyContactsContainer}>
-            {emergencyContacts.map((contact, index) => (
-              <EmergencyContactItem key={index} contact={contact} index={index} onCall={handleCallEmergencyContact} />
-            ))}
-          </View>
-        </View>
-
-        {/* Virtual Family Section */}
-        {activeTab === "family" && (
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleContainer}>
-                <Ionicons name="people" size={20} color="#2B6CB0" />
-                <Text style={styles.sectionTitle}>Virtual Family ({familyMembers.length})</Text>
+                <View style={styles.statusBadge}>
+                  <Text style={styles.statusBadgeText}>{profile?.role || 'Loading...'}</Text>
+                </View>
               </View>
-              <TouchableOpacity style={styles.sectionAction}>
-                <Text style={styles.sectionActionText}>View All</Text>
+
+              <TouchableOpacity style={styles.settingsButton}>
+                <Ionicons name="settings-outline" size={24} color="#fff" />
+              </TouchableOpacity>
+              </Animated.View>
+          </LinearGradient>
+
+          <View style={styles.tabsContainer}>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === "family" && styles.activeTab]}
+              onPress={() => setActiveTab("family")}
+            >
+              <Ionicons name="people" size={20} color={activeTab === "family" ? "#2B6CB0" : "#64748B"} />
+              <Text style={[styles.tabText, activeTab === "family" && styles.activeTabText]}>Family</Text>
+                </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tab, activeTab === "alerts" && styles.activeTab]}
+              onPress={() => setActiveTab("alerts")}
+            >
+              <Ionicons name="warning" size={20} color={activeTab === "alerts" ? "#2B6CB0" : "#64748B"} />
+              <Text style={[styles.tabText, activeTab === "alerts" && styles.activeTabText]}>Alerts</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tab, activeTab === "map" && styles.activeTab]}
+              onPress={() => setActiveTab("map")}
+            >
+              <Ionicons name="map" size={20} color={activeTab === "map" ? "#2B6CB0" : "#64748B"} />
+              <Text style={[styles.tabText, activeTab === "map" && styles.activeTabText]}>Map</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+            {/* Emergency Contacts Section */}
+            <View style={styles.sectionContainer}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleContainer}>
+                  <Ionicons name="alert-circle" size={20} color="#dc3545" />
+                  <Text style={styles.sectionTitle}>Emergency Contacts</Text>
+                </View>
+                <TouchableOpacity style={styles.sectionAction}>
+                  <Text style={styles.sectionActionText}>Edit</Text>
               </TouchableOpacity>
             </View>
 
-            {familyMembers.length > 0 ? (
+              <View style={styles.emergencyContactsContainer}>
+                {emergencyContacts.map((contact, index) => (
+                  <EmergencyContactItem key={index} contact={contact} index={index} onCall={handleCallEmergencyContact} />
+                ))}
+              </View>
+            </View>
+
+            {/* Virtual Family Section */}
+            {activeTab === "family" && (
+              <View style={styles.sectionContainer}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionTitleContainer}>
+                    <Ionicons name="people" size={20} color="#2B6CB0" />
+                    <Text style={styles.sectionTitle}>Virtual Family ({familyMembers.length})</Text>
+                  </View>
+                  <TouchableOpacity style={styles.sectionAction}>
+                    <Text style={styles.sectionActionText}>View All</Text>
+              </TouchableOpacity>
+            </View>
+
+                {familyMembers.length > 0 ? (
           <FlatList
-                horizontal
-                data={familyMembers}
-                keyExtractor={(item) => item.id.toString()}
+                    horizontal
+                    data={familyMembers}
+                    keyExtractor={(item) => item.id.toString()}
             renderItem={renderFamilyMember}
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.familyList}
-              />
-            ) : (
-              <View style={[styles.familyCard, { justifyContent: 'center', alignItems: 'center' }]}>
-                <Text style={{ color: '#64748B' }}>No family members found</Text>
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.familyList}
+                  />
+                ) : (
+                  <View style={[styles.familyCard, { justifyContent: 'center', alignItems: 'center' }]}>
+                    <Text style={{ color: '#64748B' }}>No family members found</Text>
+                  </View>
+                )}
               </View>
             )}
-          </View>
-        )}
 
-        {/* Recent Reports Section */}
-        {activeTab === "alerts" && (
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleContainer}>
-                <Ionicons name="newspaper" size={20} color="#2B6CB0" />
-                <Text style={styles.sectionTitle}>Missing Person Reports ({missingPersons.length})</Text>
+            {/* Recent Reports Section */}
+            {activeTab === "alerts" && (
+              <View style={styles.sectionContainer}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionTitleContainer}>
+                    <Ionicons name="newspaper" size={20} color="#2B6CB0" />
+                    <Text style={styles.sectionTitle}>Missing Person Reports ({missingPersons.length})</Text>
             </View>
             </View>
 
-            <ScrollView 
-              style={styles.missingPersonsScrollView}
-              showsVerticalScrollIndicator={false}
-            >
-              {missingPersons.map((person) => (
-                <View key={person.id} style={styles.alertCard}>
-                  <View style={styles.alertHeader}>
-                    <View style={styles.alertTitleContainer}>
-                      <Ionicons 
-                        name={person.status === 'FOUND' ? "checkmark-circle" : "warning"} 
-                        size={22} 
-                        color={person.status === 'FOUND' ? "#28a745" : "#856404"} 
-                      />
-                      <Text style={[
-                        styles.alertTitle,
-                        { color: person.status === 'FOUND' ? "#28a745" : "#856404" }
-                      ]}>
-                        Case #{person.case_number}
+                <ScrollView 
+                  style={styles.missingPersonsScrollView}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {missingPersons.map((person) => (
+                    <View key={person.id} style={styles.alertCard}>
+                      <View style={styles.alertHeader}>
+                        <View style={styles.alertTitleContainer}>
+                          <Ionicons 
+                            name={person.status === 'FOUND' ? "checkmark-circle" : "warning"} 
+                            size={22} 
+                            color={person.status === 'FOUND' ? "#28a745" : "#856404"} 
+                          />
+                          <Text style={[
+                            styles.alertTitle,
+                            { color: person.status === 'FOUND' ? "#28a745" : "#856404" }
+                          ]}>
+                            Case #{person.case_number}
             </Text>
-                    </View>
-                    <Text style={styles.alertTime}>
-                      Last seen: {formatDate(person.last_seen_date)}
-                    </Text>
-                  </View>
-
-                  <View style={styles.alertContent}>
-                    {person.recent_photo ? (
-                      <Image 
-                        source={{ uri: person.recent_photo }} 
-                        style={styles.missingPersonImage}
-                        resizeMode="cover" 
-                      />
-                    ) : (
-                      <View style={styles.noPhotoPlaceholder}>
-                        <Ionicons name="person" size={40} color="#ccc" />
-                      </View>
-                    )}
-
-                    <View style={styles.alertDetails}>
-                      <Text style={styles.alertName}>
-                        {person.name}, {person.age_when_missing}
-                      </Text>
-                      <Text style={styles.alertLocation}>
-                        <Ionicons name="location" size={14} color="#856404" /> {person.last_seen_location}
-                      </Text>
-                      <View style={[
-                        styles.statusBadge,
-                        { backgroundColor: person.status === 'FOUND' ? '#d4edda' : '#fff3cd' }
-                      ]}>
-                        <Text style={[
-                          styles.statusText,
-                          { color: person.status === 'FOUND' ? "#28a745" : "#856404" }
-                        ]}>
-                          {person.status}
+                        </View>
+                        <Text style={styles.alertTime}>
+                          Last seen: {formatDate(person.last_seen_date)}
                         </Text>
                       </View>
-                    </View>
-                  </View>
 
-                  <View style={styles.alertActions}>
-                    <TouchableOpacity
-                      style={styles.alertAction}
-                      onPress={() => handleCallEmergencyContact(person.emergency_contact_phone)}
-                    >
+                      <View style={styles.alertContent}>
+                        {person.recent_photo ? (
+                          <Image 
+                            source={{ uri: person.recent_photo }} 
+                            style={styles.missingPersonImage}
+                            resizeMode="cover" 
+                          />
+                        ) : (
+                          <View style={styles.noPhotoPlaceholder}>
+                            <Ionicons name="person" size={40} color="#ccc" />
+                          </View>
+                        )}
+
+                        <View style={styles.alertDetails}>
+                          <Text style={styles.alertName}>
+                            {person.name}, {person.age_when_missing}
+                          </Text>
+                          <Text style={styles.alertLocation}>
+                            <Ionicons name="location" size={14} color="#856404" /> {person.last_seen_location}
+                          </Text>
+                          <View style={[
+                            styles.statusBadge,
+                            { backgroundColor: person.status === 'FOUND' ? '#d4edda' : '#fff3cd' }
+                          ]}>
+                            <Text style={[
+                              styles.statusText,
+                              { color: person.status === 'FOUND' ? "#28a745" : "#856404" }
+                            ]}>
+                              {person.status}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      <View style={styles.alertActions}>
+                        <TouchableOpacity
+                          style={styles.alertAction}
+                          onPress={() => handleWhatsAppShare(person)}
+                        >
                 <LinearGradient
-                        colors={["#ffc107", "#e0a800"]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={styles.alertActionButton}
-                      >
-                        <Ionicons name="call" size={16} color="#fff" />
-                        <Text style={styles.alertActionText}>Call</Text>
+                            colors={["#25D366", "#128C7E"]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={styles.alertActionButton}
+                          >
+                            <FontAwesome5 name="whatsapp" size={16} color="#fff" />
+                            <Text style={styles.alertActionText}>WhatsApp</Text>
                 </LinearGradient>
             </TouchableOpacity>
 
-                    <TouchableOpacity 
-                      style={styles.alertAction}
-                      onPress={() => createAndSharePoster(person)}
-                    >
-                      <LinearGradient
-                        colors={["#17a2b8", "#138496"]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={styles.alertActionButton}
-                      >
-                        <Ionicons name="share-social" size={16} color="#fff" />
-                        <Text style={styles.alertActionText}>Share</Text>
+                        <TouchableOpacity 
+                          style={styles.alertAction}
+                          onPress={() => createAndSharePoster(person)}
+                          disabled={sharingPosterId === person.id}
+                        >
+                          <LinearGradient
+                            colors={["#28a745", "#218838"]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={styles.alertActionButton}
+                          >
+                            {sharingPosterId === person.id ? (
+                              <View style={styles.loadingContainer}>
+                                <ActivityIndicator size="small" color="#fff" />
+                                <Text style={styles.alertActionText}>Sharing...</Text>
+                              </View>
+                            ) : (
+                              <>
+                                <Ionicons name="share-social" size={16} color="#fff" />
+                                <Text style={styles.alertActionText}>Share</Text>
+                              </>
+                            )}
     </LinearGradient>
-                    </TouchableOpacity>
+                        </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.alertAction}>
-                      <LinearGradient
-                        colors={["#28a745", "#218838"]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={styles.alertActionButton}
-                      >
-                        <Ionicons name="information-circle" size={16} color="#fff" />
-                        <Text style={styles.alertActionText}>Details</Text>
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Map Section */}
-        {activeTab === "map" && (
-          <View style={styles.mapContainer}>
-            <MapView 
-              style={styles.map}
-              initialRegion={{
-                latitude: profile?.latitude ? parseFloat(profile.latitude) : 40.712800,
-                longitude: profile?.longitude ? parseFloat(profile.longitude) : -74.006000,
-                latitudeDelta: 0.0922,
-                longitudeDelta: 0.0421,
-              }}
-              showsUserLocation={true}
-              showsMyLocationButton={true}
-            >
-              {/* User's own marker */}
-              {profile?.latitude && profile?.longitude && (
-                <Marker
-                  coordinate={{
-                    latitude: parseFloat(profile.latitude),
-                    longitude: parseFloat(profile.longitude)
-                  }}
-                  title={`${profile.first_name}'s Location`}
-                  description={`${profile.city}, ${profile.state}`}
-                >
-                  <View style={styles.familyMarkerContainer}>
-                    <Image 
-                      source={{ 
-                        uri: profile.profile_picture 
-                          ? `https://6a84-106-193-251-230.ngrok-free.app${profile.profile_picture}`
-                          : "https://randomuser.me/api/portraits/men/8.jpg" 
-                      }}
-                      style={[styles.familyMarkerImage, { borderColor: '#2B6CB0' }]} 
-                    />
-                    <View style={[styles.familyMarkerStatus, { backgroundColor: '#28a745' }]} />
-                  </View>
-                </Marker>
-              )}
-
-              {/* Family members markers */}
-              {familyMembers.map((member) => (
-                member.user.latitude && member.user.longitude ? (
-                  <Marker
-                    key={member.id}
-                    coordinate={{
-                      latitude: parseFloat(member.user.latitude),
-                      longitude: parseFloat(member.user.longitude)
-                    }}
-                    title={`${member.user.first_name} ${member.user.last_name}`}
-                    description={`${member.user.city}, ${member.user.state}`}
-                  >
-                    <View style={styles.familyMarkerContainer}>
-                      <Image 
-                        source={{ 
-                          uri: member.user.profile_picture 
-                            ? `https://6a84-106-193-251-230.ngrok-free.app${member.user.profile_picture}`
-                            : "https://randomuser.me/api/portraits/men/1.jpg" 
-                        }}
-                        style={styles.familyMarkerImage} 
-                      />
-                      <View style={[styles.familyMarkerStatus, { backgroundColor: getStatusColor('Safe') }]} />
+                        <TouchableOpacity style={styles.alertAction}>
+                          <LinearGradient
+                            colors={["#28a745", "#218838"]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={styles.alertActionButton}
+                          >
+                            <Ionicons name="information-circle" size={16} color="#fff" />
+                            <Text style={styles.alertActionText}>Details</Text>
+                          </LinearGradient>
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                  </Marker>
-                ) : null
-              ))}
-            </MapView>
-          </View>
-        )}
-      </ScrollView>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Map Section */}
+            {activeTab === "map" && (
+              <View style={styles.mapContainer}>
+                <MapView 
+                  style={styles.map}
+                  initialRegion={{
+                    latitude: profile?.latitude ? parseFloat(profile.latitude) : 40.712800,
+                    longitude: profile?.longitude ? parseFloat(profile.longitude) : -74.006000,
+                    latitudeDelta: 0.0922,
+                    longitudeDelta: 0.0421,
+                  }}
+                  showsUserLocation={true}
+                  showsMyLocationButton={true}
+                >
+                  {/* User's own marker */}
+                  {profile?.latitude && profile?.longitude && (
+                    <Marker
+                      coordinate={{
+                        latitude: parseFloat(profile.latitude),
+                        longitude: parseFloat(profile.longitude)
+                      }}
+                      title={`${profile.first_name}'s Location`}
+                      description={`${profile.city}, ${profile.state}`}
+                    >
+                      <View style={styles.familyMarkerContainer}>
+                        <Image 
+                          source={{ 
+                            uri: profile.profile_picture 
+                              ? `https://15e1-150-107-18-153.ngrok-free.app${profile.profile_picture}`
+                              : "https://randomuser.me/api/portraits/men/8.jpg" 
+                          }}
+                          style={[styles.familyMarkerImage, { borderColor: '#2B6CB0' }]} 
+                        />
+                        <View style={[styles.familyMarkerStatus, { backgroundColor: '#28a745' }]} />
+                      </View>
+                    </Marker>
+                  )}
+
+                  {/* Family members markers */}
+                  {familyMembers.map((member) => (
+                    member.user.latitude && member.user.longitude ? (
+                      <Marker
+                        key={member.id}
+                        coordinate={{
+                          latitude: parseFloat(member.user.latitude),
+                          longitude: parseFloat(member.user.longitude)
+                        }}
+                        title={`${member.user.first_name} ${member.user.last_name}`}
+                        description={`${member.user.city}, ${member.user.state}`}
+                      >
+                        <View style={styles.familyMarkerContainer}>
+                          <Image 
+                            source={{ 
+                              uri: member.user.profile_picture 
+                                ? `https://15e1-150-107-18-153.ngrok-free.app${member.user.profile_picture}`
+                                : "https://randomuser.me/api/portraits/men/1.jpg" 
+                            }}
+                            style={styles.familyMarkerImage} 
+                          />
+                          <View style={[styles.familyMarkerStatus, { backgroundColor: getStatusColor('Safe') }]} />
+                        </View>
+                      </Marker>
+                    ) : null
+                  ))}
+                </MapView>
+              </View>
+            )}
+          </ScrollView>
+        </>
+      )}
     </SafeAreaView>
   )
 }
@@ -1949,6 +2144,139 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#fff3cd',
     alignSelf: 'flex-start',
+  },
+  // Skeleton loader styles
+  skeletonContainer: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  skeletonHeader: {
+    flexDirection: 'row',
+    padding: 20,
+    backgroundColor: '#1A365D',
+    alignItems: 'center',
+  },
+  skeletonProfileImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  skeletonTextContainer: {
+    marginLeft: 15,
+    flex: 1,
+  },
+  skeletonName: {
+    height: 20,
+    width: '70%',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  skeletonLocation: {
+    height: 16,
+    width: '50%',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  skeletonStatus: {
+    height: 16,
+    width: '30%',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 4,
+  },
+  skeletonTabs: {
+    flexDirection: 'row',
+    padding: 15,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  skeletonTab: {
+    height: 30,
+    flex: 1,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
+    marginHorizontal: 5,
+  },
+  skeletonSection: {
+    padding: 15,
+  },
+  skeletonSectionHeader: {
+    height: 24,
+    width: '60%',
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
+    marginBottom: 15,
+  },
+  skeletonCard: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  skeletonCardHeader: {
+    height: 20,
+    width: '40%',
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
+    marginBottom: 15,
+  },
+  skeletonCardContent: {
+    flexDirection: 'row',
+    marginBottom: 15,
+  },
+  skeletonImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 4,
+    backgroundColor: '#E2E8F0',
+  },
+  skeletonCardText: {
+    flex: 1,
+    marginLeft: 15,
+  },
+  skeletonCardTitle: {
+    height: 18,
+    width: '80%',
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  skeletonCardSubtitle: {
+    height: 16,
+    width: '60%',
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  skeletonCardStatus: {
+    height: 16,
+    width: '40%',
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
+  },
+  skeletonCardActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  skeletonButton: {
+    height: 36,
+    flex: 1,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 4,
+    marginHorizontal: 5,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 })
 

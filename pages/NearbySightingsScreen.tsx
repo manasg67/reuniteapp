@@ -51,7 +51,7 @@ export default function NearbySightingsScreen() {
 
         // Fetch nearby sightings
         const response = await fetch(
-          `https://6a84-106-193-251-230.ngrok-free.app/api/sightings/sightings/nearby/?latitude=${location.coords.latitude}&longitude=${location.coords.longitude}&radius=5`,
+          `https://15e1-150-107-18-153.ngrok-free.app/api/sightings/sightings/nearby/?latitude=${location.coords.latitude}&longitude=${location.coords.longitude}&radius=5`,
           {
             headers: {
               'Authorization': `Bearer ${tokens?.access}`,

@@ -15,102 +15,21 @@ import {
   Platform,
   ActivityIndicator,
   Pressable,
+  Modal,
+  FlatList,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
-import { Ionicons, MaterialIcons, Feather } from "@expo/vector-icons"
+import { Ionicons, MaterialIcons, Feather, FontAwesome5 } from "@expo/vector-icons"
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps"
 import { LinearGradient } from "expo-linear-gradient"
 import * as Haptics from "expo-haptics"
 import { MotiView } from "moti"
 import { Easing } from "react-native-reanimated"
 import { router } from "expo-router"
+import useAuthStore from "../store/auth"
+import { BlurView } from "expo-blur"
 
-const { width } = Dimensions.get("window")
-
-// Mock data
-const mockAlerts: Alert[] = [
-  {
-    id: "1",
-    name: "Emily Johnson",
-    age: 8,
-    location: "Central Park, New York",
-    timeElapsed: "6 hours",
-    priority: "critical" as const,
-    photo:
-      "https://images.unsplash.com/photo-1517483000871-1dbf64a6e1c6?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80",
-    status: "Active Search",
-    isNew: true,
-  },
-  {
-    id: "2",
-    name: "Michael Chen",
-    age: 16,
-    location: "Downtown, Boston",
-    timeElapsed: "24 hours",
-    priority: "high" as const,
-    photo:
-      "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=687&q=80",
-    status: "Investigation",
-  },
-  {
-    id: "3",
-    name: "Sarah Williams",
-    age: 32,
-    location: "Riverside, Chicago",
-    timeElapsed: "3 days",
-    priority: "medium" as const,
-    photo:
-      "https://images.unsplash.com/photo-1544005313-94ddf0286df2?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=688&q=80",
-    status: "Limited Search",
-  },
-]
-
-const mockActivities = [
-  {
-    id: "1",
-    type: "update",
-    title: "Search area expanded for Emily Johnson",
-    description:
-      "The search perimeter has been expanded to include the northern section of Central Park and surrounding neighborhoods.",
-    time: "30 min ago",
-    user: {
-      name: "Det. Rodriguez",
-      avatar:
-        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=687&q=80",
-    },
-    caseId: "2023-0142",
-    status: "in-progress",
-  },
-  {
-    id: "2",
-    type: "evidence",
-    title: "New evidence submitted",
-    description:
-      "Witness statement and CCTV footage from the corner of 5th Ave and 59th St has been added to the case file.",
-    time: "1 hour ago",
-    user: {
-      name: "Officer Wilson",
-      avatar:
-        "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=687&q=80",
-    },
-    caseId: "2023-0142",
-    status: "completed",
-  },
-  {
-    id: "3",
-    type: "assignment",
-    title: "K-9 Unit assigned to Michael Chen case",
-    description: "K-9 Unit has been dispatched to the last known location to assist with the search operation.",
-    time: "3 hours ago",
-    user: {
-      name: "Sgt. Thompson",
-      avatar:
-        "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80",
-    },
-    caseId: "2023-0138",
-    status: "in-progress",
-  },
-]
+const { width, height } = Dimensions.get("window")
 
 const mockStatistics = [
   {
@@ -121,7 +40,7 @@ const mockStatistics = [
     period: "vs last month",
     icon: "search-outline" as keyof typeof Ionicons.glyphMap,
     color: "#5e72e4",
-    trend: "up" as const
+    trend: "up" as const,
   },
   {
     id: "2",
@@ -131,7 +50,7 @@ const mockStatistics = [
     period: "vs last month",
     icon: "checkmark-circle-outline" as keyof typeof Ionicons.glyphMap,
     color: "#2DCE89",
-    trend: "up" as const
+    trend: "up" as const,
   },
   {
     id: "3",
@@ -141,7 +60,7 @@ const mockStatistics = [
     period: "vs last month",
     icon: "people-outline" as keyof typeof Ionicons.glyphMap,
     color: "#FB6340",
-    trend: "up" as const
+    trend: "up" as const,
   },
   {
     id: "4",
@@ -151,7 +70,7 @@ const mockStatistics = [
     period: "vs last month",
     icon: "time-outline" as keyof typeof Ionicons.glyphMap,
     color: "#11CDEF",
-    trend: "down" as const
+    trend: "down" as const,
   },
 ]
 
@@ -223,34 +142,34 @@ const TABS = [
 ]
 
 export interface Alert {
-  id: string;
-  name: string;
-  age: number;
-  location: string;
-  timeElapsed: string;
-  priority: "high" | "medium" | "critical";
-  photo: string;
-  status: string;
-  isNew?: boolean;
+  id: string
+  name: string
+  age: number
+  location: string
+  timeElapsed: string
+  priority: "high" | "medium" | "critical"
+  photo: string
+  status: string
+  isNew?: boolean
 }
 
 interface Activity {
-  id: string;
-  type: string;
-  title: string;
-  description: string;
-  time: string;
+  id: string
+  type: string
+  title: string
+  description: string
+  time: string
   user: {
-    name: string;
-    avatar: string;
-  };
-  caseId: string;
-  status: string;
+    name: string
+    avatar: string
+  }
+  caseId: string
+  status: string
 }
 
 interface PriorityAlertProps {
-  alert: Alert;
-  onPress: () => void;
+  alert: Alert
+  onPress: () => void
 }
 
 const PriorityAlert: React.FC<PriorityAlertProps> = ({ alert, onPress }) => {
@@ -289,15 +208,15 @@ const PriorityAlert: React.FC<PriorityAlertProps> = ({ alert, onPress }) => {
   const getPriorityColor = (): [string, string] => {
     switch (alert.priority) {
       case "critical":
-        return ["#FF5252", "#FF1744"];
+        return ["#FF5252", "#FF1744"]
       case "high":
-        return ["#FF9800", "#F57C00"];
+        return ["#FF9800", "#F57C00"]
       case "medium":
-        return ["#4CAF50", "#388E3C"];
+        return ["#4CAF50", "#388E3C"]
       default:
-        return ["#2196F3", "#1976D2"];
+        return ["#2196F3", "#1976D2"]
     }
-  };
+  }
 
   const getPriorityLabel = () => {
     switch (alert.priority) {
@@ -324,7 +243,12 @@ const PriorityAlert: React.FC<PriorityAlertProps> = ({ alert, onPress }) => {
 
   return (
     <Pressable onPress={handlePress}>
-      <View style={styles.alertContainer}>
+      <MotiView
+        from={{ opacity: 0, translateY: 10 }}
+        animate={{ opacity: 1, translateY: 0 }}
+        transition={{ type: "timing", duration: 300 }}
+        style={styles.alertContainer}
+      >
         {alert.isNew && (
           <Animated.View
             style={[
@@ -399,51 +323,51 @@ const PriorityAlert: React.FC<PriorityAlertProps> = ({ alert, onPress }) => {
         <View style={styles.alertExpandIconContainer}>
           <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={16} color="#999" />
         </View>
-      </View>
+      </MotiView>
     </Pressable>
   )
 }
 
 interface ActivityItemProps {
   activity: {
-    id: string;
-    type: string;
-    title: string;
-    description: string;
-    time: string;
+    id: string
+    type: string
+    title: string
+    description: string
+    time: string
     user: {
-      name: string;
-      avatar: string;
-    };
-    caseId: string;
-    status: string;
-    icon?: string;
-    iconColor?: string;
-  };
-  onPress: () => void;
+      name: string
+      avatar: string
+    }
+    caseId: string
+    status: string
+    icon?: string
+    iconColor?: string
+  }
+  onPress: () => void
 }
 
 const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onPress }) => {
   const getActivityIcon = (): keyof typeof Ionicons.glyphMap => {
     if (activity.icon) {
-      return activity.icon as keyof typeof Ionicons.glyphMap;
+      return activity.icon as keyof typeof Ionicons.glyphMap
     }
 
     switch (activity.type) {
       case "update":
-        return "refresh-circle-outline" as keyof typeof Ionicons.glyphMap;
+        return "refresh-circle-outline" as keyof typeof Ionicons.glyphMap
       case "comment":
-        return "chatbubble-outline" as keyof typeof Ionicons.glyphMap;
+        return "chatbubble-outline" as keyof typeof Ionicons.glyphMap
       case "assignment":
-        return "person-add-outline" as keyof typeof Ionicons.glyphMap;
+        return "person-add-outline" as keyof typeof Ionicons.glyphMap
       case "location":
-        return "location-outline" as keyof typeof Ionicons.glyphMap;
+        return "location-outline" as keyof typeof Ionicons.glyphMap
       case "evidence":
-        return "document-text-outline" as keyof typeof Ionicons.glyphMap;
+        return "document-text-outline" as keyof typeof Ionicons.glyphMap
       default:
-        return "information-circle-outline" as keyof typeof Ionicons.glyphMap;
+        return "information-circle-outline" as keyof typeof Ionicons.glyphMap
     }
-  };
+  }
 
   const getActivityIconColor = () => {
     if (activity.iconColor) {
@@ -513,8 +437,8 @@ const ActivityItem: React.FC<ActivityItemProps> = ({ activity, onPress }) => {
 }
 
 interface StatisticCardProps {
-  statistic: typeof mockStatistics[0];
-  onPress: () => void;
+  statistic: (typeof mockStatistics)[0]
+  onPress: () => void
 }
 
 const StatisticCard: React.FC<StatisticCardProps> = ({ statistic, onPress }) => {
@@ -590,8 +514,8 @@ const StatisticCard: React.FC<StatisticCardProps> = ({ statistic, onPress }) => 
 }
 
 interface CommunityUpdateProps {
-  update: typeof mockCommunityUpdates[0];
-  onPress: () => void;
+  update: (typeof mockCommunityUpdates)[0]
+  onPress: () => void
 }
 
 const CommunityUpdate: React.FC<CommunityUpdateProps> = ({ update, onPress }) => {
@@ -638,10 +562,10 @@ const CommunityUpdate: React.FC<CommunityUpdateProps> = ({ update, onPress }) =>
 }
 
 interface QuickActionButtonProps {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  color: string;
-  onPress: () => void;
+  icon: keyof typeof Ionicons.glyphMap
+  label: string
+  color: string
+  onPress: () => void
 }
 
 const QuickActionButton: React.FC<QuickActionButtonProps> = ({ icon, label, color, onPress }) => {
@@ -657,12 +581,17 @@ const QuickActionButton: React.FC<QuickActionButtonProps> = ({ icon, label, colo
             duration: 100,
           }}
         >
-          <View style={styles.quickActionContainer}>
-            <View style={[styles.quickActionIconContainer, { backgroundColor: `${color}20` }]}>
+          <LinearGradient
+            colors={[`${color}20`, `${color}40`]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.quickActionContainer}
+          >
+            <View style={[styles.quickActionIconContainer, { backgroundColor: `${color}30` }]}>
               <Ionicons name={icon} size={24} color={color} />
-                  </View>
-            <Text style={styles.quickActionLabel}>{label}</Text>
-                  </View>
+            </View>
+            <Text style={[styles.quickActionLabel, { color: color }]}>{label}</Text>
+          </LinearGradient>
         </MotiView>
       )}
     </Pressable>
@@ -670,44 +599,278 @@ const QuickActionButton: React.FC<QuickActionButtonProps> = ({ icon, label, colo
 }
 
 interface TabBarProps {
-  tabs: typeof TABS;
-  activeTab: string;
-  onTabPress: (key: string) => void;
+  tabs: typeof TABS
+  activeTab: string
+  onTabPress: (key: string) => void
 }
 
 const TabBar: React.FC<TabBarProps> = ({ tabs, activeTab, onTabPress }) => {
   const getIconName = (baseName: keyof typeof Ionicons.glyphMap, isActive: boolean): keyof typeof Ionicons.glyphMap => {
-    return (isActive ? baseName : `${baseName}-outline`) as keyof typeof Ionicons.glyphMap;
-  };
+    return (isActive ? baseName : `${baseName}-outline`) as keyof typeof Ionicons.glyphMap
+  }
 
   return (
-    <View style={styles.tabBarContainer}>
-      {tabs.map((tab) => {
-        const isActive = activeTab === tab.key;
-        return (
-          <TouchableOpacity key={tab.key} style={styles.tabBarTab} onPress={() => onTabPress(tab.key)}>
-            <View style={styles.tabBarContent}>
-              {isActive && (
-                <MotiView
-                  from={{ opacity: 0, scale: 0.5 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ type: "timing", duration: 300 }}
-                  style={styles.tabBarActiveBackground}
-                />
-              )}
-              <Ionicons
-                name={getIconName(tab.icon, isActive)}
-                size={22}
-                color={isActive ? "#5e72e4" : "#999"}
-              />
-              <Text style={[styles.tabBarLabel, isActive && styles.tabBarActiveLabel]}>{tab.label}</Text>
-                </View>
-            </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-};
+    <BlurView intensity={80} tint="light" style={styles.tabBarBlur}>
+      <View style={styles.tabBarContainer}>
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.key
+          return (
+            <TouchableOpacity key={tab.key} style={styles.tabBarTab} onPress={() => onTabPress(tab.key)}>
+              <View style={styles.tabBarContent}>
+                {isActive && (
+                  <MotiView
+                    from={{ opacity: 0, scale: 0.5 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ type: "timing", duration: 300 }}
+                    style={styles.tabBarActiveBackground}
+                  />
+                )}
+                <Ionicons name={getIconName(tab.icon, isActive)} size={22} color={isActive ? "#5e72e4" : "#999"} />
+                <Text style={[styles.tabBarLabel, isActive && styles.tabBarActiveLabel]}>{tab.label}</Text>
+              </View>
+              </TouchableOpacity>
+          )
+        })}
+            </View>
+    </BlurView>
+  )
+}
+
+// Define interfaces for API response
+interface DashboardUser {
+  id: number
+  name: string
+  role: string
+  organization: string
+  profile_picture: string
+}
+
+interface Notification {
+  id: number
+  title: string
+  message: string
+  priority: string
+  created_at: string
+  expires_at: string
+}
+
+interface MissingPerson {
+  id: number
+  case_number: string
+  name: string
+  age_when_missing: number
+  date_of_birth: string | null
+  gender: string
+  blood_group: string | null
+  nationality: string
+  height: number
+  weight: number
+  complexion: string
+  identifying_marks: string
+  physical_attributes: {
+    hair_color: string
+    eye_color: string
+    build: string
+  }
+  recent_photo: string | null
+  additional_photos: string[]
+  last_seen_location: string
+  last_seen_date: string
+  last_seen_details: string
+  last_seen_wearing: string
+  possible_locations: string[]
+  fir_number: string
+  poster_image: string | null
+  status: string
+  priority_level: number
+  medical_conditions: string
+  medications: string
+  emergency_contact_name: string
+  emergency_contact_phone: string
+  emergency_contact_relation: string
+  secondary_contact_name: string
+  secondary_contact_phone: string
+  reporter: number | null
+  assigned_officer: number | null
+  assigned_ngo: number | null
+  documents: {
+    id: number
+    document_type: string
+    description: string
+    file: string
+    uploaded_at: string
+  }[]
+  last_known_latitude: string | null
+  last_known_longitude: string | null
+  aadhaar_number: string | null
+  aadhaar_photo: string | null
+  family_group: number | null
+  distance: string | null
+  family_members: any[]
+  aadhaar_number_hash: string | null
+  reporter_type: string
+  created_at: string
+  updated_at: string
+}
+
+interface Statistics {
+  active_cases: {
+    count: number
+    change: number
+  }
+  resolved_cases: {
+    count: number
+    change: number
+  }
+  total_ngos: number
+  total_police: number
+  total_sightings: number
+  verification_rate: {
+    verified: number
+    pending: number
+  }
+}
+
+interface RecentActivity {
+  type: string
+  message: string
+  time_ago: string
+  case_id: number
+}
+
+interface DashboardData {
+  user: DashboardUser
+  notifications: Notification[]
+  nearby_cases: MissingPerson[]
+  random_cases: MissingPerson[]
+  statistics: Statistics
+  recent_activity: RecentActivity[]
+}
+
+// Convert API data to UI format
+const convertToAlert = (person: MissingPerson): Alert => {
+  return {
+    id: person.id.toString(),
+    name: person.name,
+    age: person.age_when_missing,
+    location: person.last_seen_location,
+    timeElapsed: formatTimeAgo(person.last_seen_date),
+    priority: getPriorityFromLevel(person.priority_level),
+    photo: person.recent_photo
+      ? person.recent_photo.startsWith("http")
+        ? person.recent_photo
+        : `https://15e1-150-107-18-153.ngrok-free.app${person.recent_photo}`
+      : "https://via.placeholder.com/150?text=No+Photo",
+    status: person.status,
+    isNew: isRecentCase(person.created_at),
+  }
+}
+
+const convertToActivity = (activity: RecentActivity): Activity => {
+  return {
+    id: `${activity.case_id}-${activity.type}`,
+    type: activity.type.toLowerCase(),
+    title: activity.message,
+    description: `Case #${activity.case_id}`,
+    time: activity.time_ago,
+    user: {
+      name: "System",
+      avatar: "https://via.placeholder.com/150?text=System",
+    },
+    caseId: activity.case_id.toString(),
+    status: "in-progress",
+  }
+}
+
+const convertToStatistic = (stats: Statistics) => {
+  return [
+    {
+      id: "1",
+      title: "Active Cases",
+      value: stats.active_cases.count,
+      change: stats.active_cases.change,
+      period: "vs last month",
+      icon: "search-outline" as keyof typeof Ionicons.glyphMap,
+      color: "#5e72e4",
+      trend: stats.active_cases.change >= 0 ? ("up" as const) : ("down" as const),
+    },
+    {
+      id: "2",
+      title: "Cases Resolved",
+      value: stats.resolved_cases.count,
+      change: stats.resolved_cases.change,
+      period: "vs last month",
+      icon: "checkmark-circle-outline" as keyof typeof Ionicons.glyphMap,
+      color: "#2DCE89",
+      trend: stats.resolved_cases.change >= 0 ? ("up" as const) : ("down" as const),
+    },
+    {
+      id: "3",
+      title: "Total NGOs",
+      value: stats.total_ngos,
+      change: 0,
+      period: "total",
+      icon: "people-outline" as keyof typeof Ionicons.glyphMap,
+      color: "#FB6340",
+      trend: "up" as const,
+    },
+    {
+      id: "4",
+      title: "Total Sightings",
+      value: stats.total_sightings,
+      change: 0,
+      period: "total",
+      icon: "time-outline" as keyof typeof Ionicons.glyphMap,
+      color: "#11CDEF",
+      trend: "up" as const,
+    },
+  ]
+}
+
+const convertToNearbyMarkers = (cases: MissingPerson[]) => {
+  return cases
+    .map((case_) => ({
+      id: case_.id.toString(),
+      latitude: case_.last_known_latitude ? Number.parseFloat(case_.last_known_latitude) : 0,
+      longitude: case_.last_known_longitude ? Number.parseFloat(case_.last_known_longitude) : 0,
+      title: case_.name,
+      description: `Last seen ${formatTimeAgo(case_.last_seen_date)}`,
+      priority: getPriorityFromLevel(case_.priority_level),
+    }))
+    .filter((marker) => marker.latitude !== 0 && marker.longitude !== 0)
+}
+
+// Helper functions
+const formatTimeAgo = (dateString: string): string => {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  if (diffMins < 60) {
+    return `${diffMins} minutes ago`
+  } else if (diffHours < 24) {
+    return `${diffHours} hours ago`
+  } else {
+    return `${diffDays} days ago`
+  }
+}
+
+const getPriorityFromLevel = (level: number): "high" | "medium" | "critical" => {
+  if (level >= 4) return "critical"
+  if (level >= 2) return "high"
+  return "medium"
+}
+
+const isRecentCase = (createdAt: string): boolean => {
+  const createdDate = new Date(createdAt)
+  const now = new Date()
+  const diffMs = now.getTime() - createdDate.getTime()
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+  return diffHours < 24 // Consider cases created in the last 24 hours as new
+}
 
 // Main HomeScreen Component
 export default function HomeScreen() {
@@ -719,25 +882,76 @@ export default function HomeScreen() {
   const [statistics, setStatistics] = useState<typeof mockStatistics>([])
   const [communityUpdates, setCommunityUpdates] = useState<typeof mockCommunityUpdates>([])
   const [nearbyMarkers, setNearbyMarkers] = useState<typeof mockNearbyMarkers>([])
+  const [userName, setUserName] = useState("User")
+  const [userProfilePic, setUserProfilePic] = useState<string | null>(null)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const { tokens } = useAuthStore()
 
   const scrollY = useRef(new Animated.Value(0)).current
   const refreshAnim = useRef(new Animated.Value(0)).current
 
-  // Simulate data loading
-  useEffect(() => {
-    const loadData = async () => {
-      // Simulate network request
-      setTimeout(() => {
-        setAlerts(mockAlerts)
-        setActivities(mockActivities)
-        setStatistics(mockStatistics)
-        setCommunityUpdates(mockCommunityUpdates)
-        setNearbyMarkers(mockNearbyMarkers)
+  // Fetch dashboard data
+  const fetchDashboardData = async () => {
+    try {
+      if (!tokens || !tokens.access) {
+        console.error("No tokens found in auth store")
         setIsLoading(false)
-      }, 1500)
-    }
+        return
+      }
 
-    loadData()
+      const response = await fetch("https://15e1-150-107-18-153.ngrok-free.app/api/accounts/dashboard/", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${tokens.access}`,
+          Accept: "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch dashboard data")
+      }
+
+      const data: DashboardData = await response.json()
+
+      // Update user info
+      setUserName(data.user.name)
+      setUserProfilePic(data.user.profile_picture)
+
+      // Set notifications
+      setNotifications(data.notifications)
+
+      // Convert and set alerts from random cases only
+      const randomAlerts = data.random_cases.map(convertToAlert)
+      setAlerts(randomAlerts)
+
+      // Convert and set activities
+      const activitiesData = data.recent_activity.map(convertToActivity)
+      setActivities(activitiesData)
+
+      // Convert and set statistics
+      const statisticsData = convertToStatistic(data.statistics)
+      setStatistics(statisticsData)
+
+      // Convert and set nearby markers
+      const markersData = convertToNearbyMarkers(data.nearby_cases)
+      setNearbyMarkers(markersData)
+
+      // Keep community updates as is for now
+      setCommunityUpdates(mockCommunityUpdates)
+
+      setIsLoading(false)
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error)
+      setIsLoading(false)
+    }
+  }
+
+  // Load data on component mount
+  useEffect(() => {
+    fetchDashboardData()
   }, [])
 
   const onRefresh = React.useCallback(() => {
@@ -752,24 +966,18 @@ export default function HomeScreen() {
       refreshAnim.setValue(0)
     })
 
-    // Simulate refreshing data
-    setTimeout(() => {
-      // Update with new data
-      setAlerts([...mockAlerts])
-      setActivities([...mockActivities])
-      setStatistics([...mockStatistics])
-      setCommunityUpdates([...mockCommunityUpdates])
+    // Fetch fresh data
+    fetchDashboardData().finally(() => {
       setRefreshing(false)
-
       // Provide haptic feedback when refresh completes
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-    }, 1500)
+    })
   }, [])
 
   // Header animation based on scroll position
   const headerHeight = scrollY.interpolate({
     inputRange: [0, 120],
-    outputRange: [120, 70],
+    outputRange: [150, 70],
     extrapolate: "clamp",
   })
 
@@ -787,31 +995,50 @@ export default function HomeScreen() {
 
   const renderHeader = () => (
     <Animated.View style={[styles.header, { height: headerHeight }]}>
-      <Animated.View style={[styles.headerContent, { opacity: headerOpacity }]}>
-        <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.greeting}>Good morning,</Text>
-            <Text style={styles.userName}>Officer Johnson</Text>
-                </View>
-          <TouchableOpacity style={styles.notificationButton}>
-            <Ionicons name="notifications-outline" size={24} color="#333" />
-            <View style={styles.notificationBadge}>
-              <Text style={styles.notificationBadgeText}>3</Text>
-              </View>
+              <LinearGradient
+            colors={["#1A365D", "#2B6CB0"]}
+            start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}
+      >
+        <Animated.View style={[styles.headerContent, { opacity: headerOpacity }]}>
+          <View style={styles.headerTop}>
+            <TouchableOpacity style={styles.profileButton} onPress={() => setShowProfileModal(true)}>
+              {userProfilePic ? (
+                <Image source={{ uri: userProfilePic }} style={styles.profileImage} />
+              ) : (
+                <View style={styles.profileImagePlaceholder}>
+                  <Text style={styles.profileImagePlaceholderText}>{userName.charAt(0).toUpperCase()}</Text>
+                  </View>
+              )}
             </TouchableOpacity>
-        </View>
-        <Text style={styles.headerSubtitle}>You have {alerts.length} high priority alerts today</Text>
+            <View style={styles.greetingContainer}>
+              <Text style={styles.userName}>{userName}</Text>
+                  </View>
+            <TouchableOpacity style={styles.notificationButton} onPress={() => setShowNotifications(true)}>
+              <Ionicons name="notifications-outline" size={24} color="#fff" />
+              {notifications.length > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>{notifications.length}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.headerSubtitle}>You have {alerts.length} high priority alerts today</Text>
           </Animated.View>
 
-      <Animated.View style={[styles.compactHeader, { opacity: headerTitleOpacity }]}>
-        <Text style={styles.compactHeaderTitle}>Missing Persons Dashboard</Text>
-        <TouchableOpacity style={styles.notificationButton}>
-          <Ionicons name="notifications-outline" size={22} color="#333" />
-          <View style={styles.notificationBadge}>
-            <Text style={styles.notificationBadgeText}>3</Text>
-          </View>
+        <Animated.View style={[styles.compactHeader, { opacity: headerTitleOpacity }]}>
+          <Text style={styles.compactHeaderTitle}>Missing Persons Dashboard</Text>
+          <TouchableOpacity style={styles.notificationButton} onPress={() => setShowNotifications(true)}>
+            <Ionicons name="notifications-outline" size={22} color="#fff" />
+            {notifications.length > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>{notifications.length}</Text>
+                </View>
+            )}
             </TouchableOpacity>
           </Animated.View>
+      </LinearGradient>
     </Animated.View>
   )
 
@@ -841,42 +1068,57 @@ export default function HomeScreen() {
         color="#9C27B0"
         onPress={() => router.push("/volunter")}
       />
-        </View>
+    </View>
   )
 
   const renderPriorityAlerts = () => (
     <View style={styles.sectionContainer}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Priority Alerts</Text>
-        <TouchableOpacity>
+        <View style={styles.sectionTitleContainer}>
+          <Ionicons name="alert-circle" size={20} color="#FF5252" style={styles.sectionIcon} />
+          <Text style={styles.sectionTitle}>Priority Alerts</Text>
+        </View>
+        <TouchableOpacity style={styles.seeAllButton}>
           <Text style={styles.seeAllText}>See All</Text>
-        </TouchableOpacity>
-      </View>
+          <Ionicons name="chevron-forward" size={16} color="#5e72e4" />
+            </TouchableOpacity>
+        </View>
 
-      {alerts.map((alert, index) => (
-        <MotiView
-          key={alert.id}
-          from={{ opacity: 0, translateY: 20 }}
-          animate={{ opacity: 1, translateY: 0 }}
-          transition={{
-            type: "timing",
-            duration: 400,
-            delay: index * 100,
-            easing: Easing.out(Easing.ease),
-          }}
-        >
-          <PriorityAlert alert={alert} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)} />
-        </MotiView>
-      ))}
+      {alerts.length > 0 ? (
+        alerts.map((alert, index) => (
+          <MotiView
+            key={alert.id}
+            from={{ opacity: 0, translateY: 20 }}
+            animate={{ opacity: 1, translateY: 0 }}
+            transition={{
+              type: "timing",
+              duration: 400,
+              delay: index * 100,
+              easing: Easing.out(Easing.ease),
+            }}
+          >
+            <PriorityAlert alert={alert} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)} />
+          </MotiView>
+        ))
+      ) : (
+        <View style={styles.emptyStateContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color="#ccc" />
+          <Text style={styles.emptyStateText}>No priority alerts at the moment</Text>
+        </View>
+      )}
     </View>
   )
 
   const renderStatistics = () => (
     <View style={styles.sectionContainer}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Statistics Overview</Text>
-        <TouchableOpacity>
+        <View style={styles.sectionTitleContainer}>
+          <Ionicons name="stats-chart" size={20} color="#5e72e4" style={styles.sectionIcon} />
+          <Text style={styles.sectionTitle}>Statistics Overview</Text>
+        </View>
+        <TouchableOpacity style={styles.seeAllButton}>
           <Text style={styles.seeAllText}>Details</Text>
+          <Ionicons name="chevron-forward" size={16} color="#5e72e4" />
         </TouchableOpacity>
       </View>
 
@@ -907,9 +1149,13 @@ export default function HomeScreen() {
   const renderNearbyMap = () => (
     <View style={styles.sectionContainer}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Nearby Cases</Text>
-        <TouchableOpacity>
+        <View style={styles.sectionTitleContainer}>
+          <Ionicons name="location" size={20} color="#FF9800" style={styles.sectionIcon} />
+          <Text style={styles.sectionTitle}>Nearby Cases</Text>
+        </View>
+        <TouchableOpacity style={styles.seeAllButton} onPress={() => router.push("/nearbysightings")}>
           <Text style={styles.seeAllText}>Full Map</Text>
+          <Ionicons name="chevron-forward" size={16} color="#5e72e4" />
         </TouchableOpacity>
       </View>
 
@@ -920,11 +1166,11 @@ export default function HomeScreen() {
         style={styles.mapContainer}
       >
         <MapView
-          provider={Platform.OS === 'ios' ? undefined : PROVIDER_GOOGLE}
+          provider={Platform.OS === "ios" ? undefined : PROVIDER_GOOGLE}
           style={styles.map}
           initialRegion={{
-            latitude: 37.78825,
-            longitude: -122.4324,
+            latitude: nearbyMarkers.length > 0 ? nearbyMarkers[0].latitude : 37.78825,
+            longitude: nearbyMarkers.length > 0 ? nearbyMarkers[0].longitude : -122.4324,
             latitudeDelta: 0.0922,
             longitudeDelta: 0.0421,
           }}
@@ -938,15 +1184,30 @@ export default function HomeScreen() {
               }}
               title={marker.title}
               description={marker.description}
-            />
+            >
+              <View
+                style={[
+                  styles.customMarker,
+                  {
+                    backgroundColor:
+                      marker.priority === "critical" ? "#FF5252" : marker.priority === "high" ? "#FF9800" : "#4CAF50",
+                  },
+                ]}
+              >
+                <FontAwesome5 name="map-marker-alt" size={16} color="#fff" />
+              </View>
+            </Marker>
           ))}
         </MapView>
         <LinearGradient colors={["rgba(255,255,255,0.9)", "transparent"]} style={styles.mapGradient} />
         <View style={styles.mapOverlay}>
-          <Text style={styles.mapOverlayText}>{nearbyMarkers.length} active cases nearby</Text>
-          <TouchableOpacity style={styles.mapButton}>
-            <Text style={styles.mapButtonText}>Navigate</Text>
+          <View style={styles.mapOverlayContent}>
+            <Text style={styles.mapOverlayText}>{nearbyMarkers.length} active cases nearby</Text>
+            <TouchableOpacity style={styles.mapButton} onPress={() => router.push("/nearbysightings")}>
+              <Text style={styles.mapButtonText}>Navigate</Text>
+              <Ionicons name="navigate" size={14} color="#fff" style={{ marginLeft: 4 }} />
         </TouchableOpacity>
+          </View>
         </View>
       </MotiView>
     </View>
@@ -955,9 +1216,13 @@ export default function HomeScreen() {
   const renderRecentActivity = () => (
     <View style={styles.sectionContainer}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Recent Activity</Text>
-        <TouchableOpacity>
+        <View style={styles.sectionTitleContainer}>
+          <Ionicons name="time" size={20} color="#4CAF50" style={styles.sectionIcon} />
+          <Text style={styles.sectionTitle}>Recent Activity</Text>
+        </View>
+        <TouchableOpacity style={styles.seeAllButton}>
           <Text style={styles.seeAllText}>See All</Text>
+          <Ionicons name="chevron-forward" size={16} color="#5e72e4" />
         </TouchableOpacity>
       </View>
 
@@ -982,9 +1247,13 @@ export default function HomeScreen() {
   const renderCommunityUpdates = () => (
     <View style={styles.sectionContainer}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Community Updates</Text>
-        <TouchableOpacity>
+        <View style={styles.sectionTitleContainer}>
+          <Ionicons name="people" size={20} color="#9C27B0" style={styles.sectionIcon} />
+          <Text style={styles.sectionTitle}>Community Updates</Text>
+        </View>
+        <TouchableOpacity style={styles.seeAllButton}>
           <Text style={styles.seeAllText}>See All</Text>
+          <Ionicons name="chevron-forward" size={16} color="#5e72e4" />
         </TouchableOpacity>
       </View>
 
@@ -1013,6 +1282,282 @@ export default function HomeScreen() {
     </View>
   )
 
+  const renderSkeletonLoader = () => (
+    <ScrollView contentContainerStyle={styles.scrollContent}>
+      {/* Header Skeleton */}
+      <View style={styles.skeletonHeader}>
+        <View>
+          <View style={styles.skeletonText} />
+          <View style={[styles.skeletonText, { width: "60%", marginTop: 8 }]} />
+        </View>
+        <View style={styles.skeletonNotificationButton} />
+      </View>
+      <View style={[styles.skeletonText, { width: "80%", marginTop: 8, marginBottom: 16 }]} />
+
+      {/* Quick Actions Skeleton */}
+      <View style={styles.quickActionsContainer}>
+        {[1, 2, 3, 4].map((item) => (
+          <View key={item} style={styles.skeletonQuickAction}>
+            <View style={styles.skeletonQuickActionIcon} />
+            <View style={[styles.skeletonText, { width: "60%", marginTop: 8 }]} />
+          </View>
+        ))}
+      </View>
+
+      {/* Priority Alerts Skeleton */}
+      <View style={styles.sectionContainer}>
+        <View style={styles.sectionHeader}>
+          <View style={[styles.skeletonText, { width: "40%" }]} />
+          <View style={[styles.skeletonText, { width: "20%" }]} />
+        </View>
+        {[1, 2].map((item) => (
+          <View key={item} style={styles.skeletonAlert}>
+            <View style={styles.skeletonAlertPhoto} />
+            <View style={{ flex: 1 }}>
+              <View style={[styles.skeletonText, { width: "70%" }]} />
+              <View style={[styles.skeletonText, { width: "50%", marginTop: 8 }]} />
+              <View style={[styles.skeletonText, { width: "60%", marginTop: 8 }]} />
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* Statistics Skeleton */}
+      <View style={styles.sectionContainer}>
+        <View style={styles.sectionHeader}>
+          <View style={[styles.skeletonText, { width: "40%" }]} />
+          <View style={[styles.skeletonText, { width: "20%" }]} />
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.statisticsScrollContent}
+        >
+          {[1, 2, 3, 4].map((item) => (
+            <View key={item} style={styles.skeletonStat}>
+              <View style={styles.skeletonStatHeader}>
+                <View style={styles.skeletonStatIcon} />
+                <View style={[styles.skeletonText, { width: "60%" }]} />
+              </View>
+              <View style={[styles.skeletonText, { width: "40%", height: 24, marginTop: 8 }]} />
+              <View style={styles.skeletonStatProgress} />
+              <View style={styles.skeletonStatFooter}>
+                <View style={[styles.skeletonText, { width: "30%" }]} />
+                <View style={[styles.skeletonText, { width: "30%" }]} />
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Map Skeleton */}
+      <View style={styles.sectionContainer}>
+        <View style={styles.sectionHeader}>
+          <View style={[styles.skeletonText, { width: "40%" }]} />
+          <View style={[styles.skeletonText, { width: "20%" }]} />
+        </View>
+        <View style={styles.skeletonMap} />
+      </View>
+
+      {/* Recent Activity Skeleton */}
+      <View style={styles.sectionContainer}>
+        <View style={styles.sectionHeader}>
+          <View style={[styles.skeletonText, { width: "40%" }]} />
+          <View style={[styles.skeletonText, { width: "20%" }]} />
+        </View>
+        {[1, 2, 3].map((item) => (
+          <View key={item} style={styles.skeletonActivity}>
+            <View style={styles.skeletonActivityIcon} />
+            <View style={{ flex: 1 }}>
+              <View style={[styles.skeletonText, { width: "80%" }]} />
+              <View style={[styles.skeletonText, { width: "60%", marginTop: 8 }]} />
+              <View style={styles.skeletonActivityFooter}>
+                <View style={[styles.skeletonText, { width: "30%" }]} />
+                <View style={[styles.skeletonText, { width: "20%" }]} />
+              </View>
+            </View>
+          </View>
+        ))}
+      </View>
+    </ScrollView>
+  )
+
+  const renderNotificationsModal = () => (
+    <Modal
+      visible={showNotifications}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={() => setShowNotifications(false)}
+    >
+      <BlurView intensity={80} tint="dark" style={styles.modalOverlay}>
+        <MotiView
+          from={{ opacity: 0, translateY: 50 }}
+          animate={{ opacity: 1, translateY: 0 }}
+          transition={{ type: "timing", duration: 300 }}
+          style={styles.modalContent}
+        >
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Notifications</Text>
+            <TouchableOpacity style={styles.modalCloseButton} onPress={() => setShowNotifications(false)}>
+              <Ionicons name="close" size={24} color="#333" />
+            </TouchableOpacity>
+          </View>
+
+          {notifications.length > 0 ? (
+            <FlatList
+              data={notifications}
+              keyExtractor={(item) => item.id.toString()}
+              style={styles.notificationsList}
+              renderItem={({ item, index }) => (
+                <MotiView
+                  from={{ opacity: 0, translateY: 20 }}
+                  animate={{ opacity: 1, translateY: 0 }}
+                  transition={{
+                    type: "timing",
+                    duration: 300,
+                    delay: index * 50,
+                  }}
+                >
+                  <View style={[styles.notificationItem, item.priority === "HIGH" && styles.highPriorityNotification]}>
+                    <View style={styles.notificationHeader}>
+                      <View style={styles.notificationTitleContainer}>
+                        <Ionicons
+                          name={item.priority === "HIGH" ? "alert-circle" : "information-circle"}
+                          size={20}
+                          color={item.priority === "HIGH" ? "#FF5252" : "#5e72e4"}
+                          style={{ marginRight: 8 }}
+                        />
+                        <Text style={styles.notificationTitle}>{item.title}</Text>
+                      </View>
+                      <Text style={styles.notificationTime}>{formatTimeAgo(item.created_at)}</Text>
+                    </View>
+                    <Text style={styles.notificationMessage}>{item.message}</Text>
+                    <View style={styles.notificationActions}>
+                      <TouchableOpacity style={styles.notificationAction}>
+                        <Ionicons name="checkmark-circle-outline" size={16} color="#4CAF50" />
+                        <Text style={[styles.notificationActionText, { color: "#4CAF50" }]}>Mark as Read</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.notificationAction}>
+                        <Ionicons name="arrow-forward-circle-outline" size={16} color="#5e72e4" />
+                        <Text style={[styles.notificationActionText, { color: "#5e72e4" }]}>View Details</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </MotiView>
+              )}
+            />
+          ) : (
+            <View style={styles.emptyNotificationsContainer}>
+              <Ionicons name="notifications-off-outline" size={48} color="#ccc" />
+              <Text style={styles.emptyNotificationsText}>No notifications</Text>
+              <Text style={styles.emptyNotificationsSubtext}>
+                You'll receive notifications about case updates and alerts here
+              </Text>
+            </View>
+          )}
+        </MotiView>
+      </BlurView>
+    </Modal>
+  )
+
+  const renderProfileModal = () => (
+    <Modal
+      visible={showProfileModal}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={() => setShowProfileModal(false)}
+    >
+      <BlurView intensity={80} tint="dark" style={styles.modalOverlay}>
+        <MotiView
+          from={{ opacity: 0, translateY: 50 }}
+          animate={{ opacity: 1, translateY: 0 }}
+          transition={{ type: "timing", duration: 300 }}
+          style={styles.profileModalContent}
+        >
+          <View style={styles.profileModalHeader}>
+            <TouchableOpacity style={styles.modalCloseButton} onPress={() => setShowProfileModal(false)}>
+              <Ionicons name="close" size={24} color="#333" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.profileModalBody}>
+            <View style={styles.profileImageContainer}>
+              {userProfilePic ? (
+                <Image source={{ uri: userProfilePic }} style={styles.profileModalImage} />
+              ) : (
+                <View style={styles.profileModalImagePlaceholder}>
+                  <Text style={styles.profileModalImagePlaceholderText}>{userName.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <TouchableOpacity style={styles.editProfileImageButton}>
+                <Ionicons name="camera" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.profileName}>{userName}</Text>
+            <Text style={styles.profileRole}>Volunteer</Text>
+
+            <View style={styles.profileStats}>
+              <View style={styles.profileStat}>
+                <Text style={styles.profileStatValue}>12</Text>
+                <Text style={styles.profileStatLabel}>Cases</Text>
+              </View>
+              <View style={styles.profileStatDivider} />
+              <View style={styles.profileStat}>
+                <Text style={styles.profileStatValue}>48</Text>
+                <Text style={styles.profileStatLabel}>Hours</Text>
+              </View>
+              <View style={styles.profileStatDivider} />
+              <View style={styles.profileStat}>
+                <Text style={styles.profileStatValue}>3</Text>
+                <Text style={styles.profileStatLabel}>Resolved</Text>
+              </View>
+            </View>
+
+            <View style={styles.profileMenuContainer}>
+              <TouchableOpacity style={styles.profileMenuItem}>
+                <View style={styles.profileMenuItemIcon}>
+                  <Ionicons name="person-outline" size={20} color="#5e72e4" />
+                </View>
+                <Text style={styles.profileMenuItemText}>Edit Profile</Text>
+                <Ionicons name="chevron-forward" size={20} color="#ccc" />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.profileMenuItem}>
+                <View style={styles.profileMenuItemIcon}>
+                  <Ionicons name="settings-outline" size={20} color="#5e72e4" />
+                </View>
+                <Text style={styles.profileMenuItemText}>Settings</Text>
+                <Ionicons name="chevron-forward" size={20} color="#ccc" />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.profileMenuItem}>
+                <View style={styles.profileMenuItemIcon}>
+                  <Ionicons name="help-circle-outline" size={20} color="#5e72e4" />
+                </View>
+                <Text style={styles.profileMenuItemText}>Help & Support</Text>
+                <Ionicons name="chevron-forward" size={20} color="#ccc" />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.profileMenuItem}>
+                <View style={styles.profileMenuItemIcon}>
+                  <Ionicons name="shield-outline" size={20} color="#5e72e4" />
+                </View>
+                <Text style={styles.profileMenuItemText}>Privacy & Security</Text>
+                <Ionicons name="chevron-forward" size={20} color="#ccc" />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.logoutButton}>
+              <Ionicons name="log-out-outline" size={20} color="#FF5252" style={{ marginRight: 8 }} />
+              <Text style={styles.logoutButtonText}>Log Out</Text>
+            </TouchableOpacity>
+          </View>
+        </MotiView>
+      </BlurView>
+    </Modal>
+  )
+
   const renderRefreshAnimation = () => (
     <Animated.View
       style={[
@@ -1038,12 +1583,12 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="light-content" />
 
       {renderHeader()}
 
       {isLoading ? (
-        renderLoadingState()
+        renderSkeletonLoader()
       ) : (
         <Animated.ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -1071,6 +1616,9 @@ export default function HomeScreen() {
 
       {refreshing && renderRefreshAnimation()}
 
+      {renderNotificationsModal()}
+      {renderProfileModal()}
+
       <TabBar
         tabs={TABS}
         activeTab={activeTab}
@@ -1089,45 +1637,84 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8f9fa",
   },
   header: {
-    backgroundColor: "#fff",
-    paddingHorizontal: 16,
     paddingTop: Platform.OS === "ios" ? 0 : 16,
     shadowColor: "#000",
+    
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 3,
+    elevation: 5,
     zIndex: 10,
+    overflow: "hidden",
+  
+  },
+  headerGradient: {
+    flex: 1,
+    paddingHorizontal: 10,
   },
   headerContent: {
     flex: 1,
     justifyContent: "space-between",
-    paddingBottom: 16,
+    paddingBottom: 30,
   },
   headerTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginTop: 8,
+  },
+  greetingContainer: {
+    flex: 1,
+    marginLeft: 12,
   },
   greeting: {
     fontSize: 14,
-    color: "#666",
+    color: "rgba(255, 255, 255, 0.8)",
   },
   userName: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#333",
+    color: "#fff",
   },
   headerSubtitle: {
     fontSize: 14,
-    color: "#666",
+    color: "rgba(255, 255, 255, 0.8)",
     marginTop: 4,
+  },
+  profileButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+  },
+  profileImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 20,
+  },
+  profileImagePlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileImagePlaceholderText: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#fff",
   },
   notificationButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#f0f0f0",
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
@@ -1143,7 +1730,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: "#fff",
+    borderColor: "#5e72e4",
   },
   notificationBadgeText: {
     color: "#fff",
@@ -1160,12 +1747,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    backgroundColor: "#fff",
   },
   compactHeaderTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#333",
+    color: "#fff",
   },
   scrollContent: {
     paddingBottom: 100,
@@ -1176,10 +1762,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     backgroundColor: "#fff",
-    marginBottom: 8,
+    marginBottom: 30,
+    borderRadius: 16,
+    marginHorizontal: 3,
+    marginTop: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
   },
   quickActionContainer: {
     alignItems: "center",
+    padding: 12,
+    borderRadius: 12,
   },
   quickActionIconContainer: {
     width: 56,
@@ -1191,13 +1787,19 @@ const styles = StyleSheet.create({
   },
   quickActionLabel: {
     fontSize: 12,
-    color: "#333",
-    fontWeight: "500",
+    fontWeight: "600",
   },
   sectionContainer: {
     backgroundColor: "#fff",
     marginBottom: 8,
     paddingVertical: 16,
+    borderRadius: 16,
+    marginHorizontal: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
   },
   sectionHeader: {
     flexDirection: "row",
@@ -1206,15 +1808,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 12,
   },
+  sectionTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  sectionIcon: {
+    marginRight: 8,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
     color: "#333",
   },
+  seeAllButton: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   seeAllText: {
     fontSize: 14,
     color: "#5e72e4",
     fontWeight: "500",
+    marginRight: 4,
   },
   statisticsScrollContent: {
     paddingHorizontal: 16,
@@ -1230,6 +1844,18 @@ const styles = StyleSheet.create({
   map: {
     ...StyleSheet.absoluteFillObject,
   },
+  customMarker: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
   mapGradient: {
     position: "absolute",
     top: 0,
@@ -1244,25 +1870,29 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: "rgba(255,255,255,0.9)",
     padding: 12,
+  },
+  mapOverlayContent: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
   mapOverlayText: {
     fontSize: 14,
-    fontWeight: "500",
+    fontWeight: "600",
     color: "#333",
   },
   mapButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     backgroundColor: "#5e72e4",
-    borderRadius: 4,
+    borderRadius: 20,
+    flexDirection: "row",
+    alignItems: "center",
   },
   mapButtonText: {
     color: "#fff",
     fontSize: 12,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   loadingContainer: {
     flex: 1,
@@ -1307,6 +1937,8 @@ const styles = StyleSheet.create({
     elevation: 2,
     position: "relative",
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
   },
   alertPulseBorder: {
     position: "absolute",
@@ -1515,6 +2147,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
   },
   statHeader: {
     flexDirection: "row",
@@ -1644,17 +2278,18 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   // TabBar styles
-  tabBarContainer: {
-    flexDirection: "row",
-    backgroundColor: "#fff",
-    paddingBottom: Platform.OS === "ios" ? 20 : 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: "#f0f0f0",
+  tabBarBlur: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
+  },
+  tabBarContainer: {
+    flexDirection: "row",
+    paddingBottom: Platform.OS === "ios" ? 20 : 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.05)",
   },
   tabBarTab: {
     flex: 1,
@@ -1673,7 +2308,7 @@ const styles = StyleSheet.create({
     left: -16,
     right: -16,
     bottom: -6,
-    backgroundColor: "#f0f2ff",
+    backgroundColor: "rgba(94, 114, 228, 0.1)",
     borderRadius: 8,
     zIndex: -1,
   },
@@ -1685,6 +2320,384 @@ const styles = StyleSheet.create({
   tabBarActiveLabel: {
     color: "#5e72e4",
     fontWeight: "500",
+  },
+  emptyStateContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: "#666",
+    marginTop: 10,
+    textAlign: "center",
+  },
+  // Skeleton loader styles
+  skeletonText: {
+    height: 16,
+    backgroundColor: "#e0e0e0",
+    borderRadius: 4,
+    width: "80%",
+  },
+  skeletonHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  skeletonNotificationButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#e0e0e0",
+  },
+  skeletonQuickAction: {
+    alignItems: "center",
+  },
+  skeletonQuickActionIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#e0e0e0",
+  },
+  skeletonAlert: {
+    flexDirection: "row",
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  skeletonAlertPhoto: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: "#e0e0e0",
+    marginRight: 12,
+  },
+  skeletonStat: {
+    width: 160,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    marginRight: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  skeletonStatHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  skeletonStatIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#e0e0e0",
+    marginRight: 8,
+  },
+  skeletonStatProgress: {
+    height: 4,
+    backgroundColor: "#e0e0e0",
+    borderRadius: 2,
+    marginBottom: 12,
+  },
+  skeletonStatFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  skeletonMap: {
+    height: 200,
+    marginHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: "#e0e0e0",
+  },
+  skeletonActivity: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  skeletonActivityIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#e0e0e0",
+    marginRight: 12,
+  },
+  skeletonActivityFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+
+  // Notification modal styles
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "80%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -5 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  modalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#f0f0f0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  notificationsList: {
+    padding: 16,
+    maxHeight: height * 0.6,
+  },
+  notificationItem: {
+    padding: 16,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
+  },
+  highPriorityNotification: {
+    borderLeftWidth: 4,
+    borderLeftColor: "#FF5252",
+  },
+  notificationHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  notificationTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  notificationTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#333",
+    flex: 1,
+  },
+  notificationTime: {
+    fontSize: 12,
+    color: "#999",
+  },
+  notificationMessage: {
+    fontSize: 14,
+    color: "#666",
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  notificationActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+    paddingTop: 12,
+  },
+  notificationAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 16,
+  },
+  notificationActionText: {
+    fontSize: 12,
+    marginLeft: 4,
+  },
+  emptyNotificationsContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
+  },
+  emptyNotificationsText: {
+    fontSize: 16,
+    color: "#666",
+    marginTop: 16,
+    fontWeight: "600",
+  },
+  emptyNotificationsSubtext: {
+    fontSize: 14,
+    color: "#999",
+    marginTop: 8,
+    textAlign: "center",
+    paddingHorizontal: 20,
+  },
+
+  // Profile modal styles
+  profileModalContent: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "90%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -5 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  profileModalHeader: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    padding: 16,
+  },
+  profileModalBody: {
+    alignItems: "center",
+    paddingBottom: 30,
+  },
+  profileImageContainer: {
+    position: "relative",
+    marginBottom: 16,
+  },
+  profileModalImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 3,
+    borderColor: "#fff",
+  },
+  profileModalImagePlaceholder: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "#5e72e4",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "#fff",
+  },
+  profileModalImagePlaceholderText: {
+    fontSize: 36,
+    fontWeight: "bold",
+    color: "#fff",
+  },
+  editProfileImageButton: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#5e72e4",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  profileName: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 4,
+  },
+  profileRole: {
+    fontSize: 16,
+    color: "#666",
+    marginBottom: 16,
+  },
+  profileStats: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    width: "100%",
+    paddingHorizontal: 16,
+    marginBottom: 24,
+  },
+  profileStat: {
+    alignItems: "center",
+    flex: 1,
+  },
+  profileStatValue: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  profileStatLabel: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 4,
+  },
+  profileStatDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: "#f0f0f0",
+  },
+  profileMenuContainer: {
+    width: "100%",
+    paddingHorizontal: 16,
+    marginBottom: 24,
+  },
+  profileMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  profileMenuItemIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(94, 114, 228, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  profileMenuItemText: {
+    fontSize: 16,
+    color: "#333",
+    flex: 1,
+  },
+  logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 24,
+    backgroundColor: "rgba(255, 82, 82, 0.1)",
+    marginTop: 16,
+  },
+  logoutButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FF5252",
   },
 })
 
