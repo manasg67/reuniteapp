@@ -426,6 +426,7 @@ export default function SightingReportScreen() {
         </View>
         <View style={styles.skeletonRow}>
           <View style={styles.skeletonLabel} />
+          
           <View style={styles.skeletonValue} />
         </View>
         <View style={styles.skeletonRow}>
